@@ -1,7 +1,3 @@
-import 'package:flutter/material.dart';
+import '../../main.dart' as canonical;
 
-import 'app.dart';
-
-void main() {
-  runApp(const ElikhaStudentMobileApp());
-}
+Future<void> main() => canonical.main();

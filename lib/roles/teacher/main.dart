@@ -1,5 +1,3 @@
-import 'app.dart' as elikha_app;
+import '../../main.dart' as canonical;
 
-void main() {
-  elikha_app.main();
-}
+Future<void> main() => canonical.main();

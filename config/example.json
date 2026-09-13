@@ -1,4 +1,6 @@
 {
   "SUPABASE_URL": "https://your-project.supabase.co",
-  "SUPABASE_ANON_KEY": "your-publishable-anon-key"
+  "SUPABASE_ANON_KEY": "your-publishable-anon-key",
+  "ELIKHA_WEB_URL": "https://elikhaweb.vercel.app",
+  "ELIKHA_MODEL_API_URL": "https://elikha-r2-models.elikha-r2-models-worker.workers.dev"
 }

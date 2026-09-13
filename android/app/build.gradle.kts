@@ -24,7 +24,10 @@ android {
         applicationId = "com.example.elikha_mobile"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        // E-Likha's complete AR feature set depends on a current Chromium
+        // WebView for camera access, WebGL, WebAssembly, and MediaPipe.
+        // Android 10 is the oldest Android release supported by current Chrome.
+        minSdk = 29
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

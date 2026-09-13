@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-void main() {
-  runApp(const ElikhaParentApp());
-}
+import '../../main.dart' as canonical;
+
+Future<void> main() => canonical.main();
 
 class ElikhaParentApp extends StatelessWidget {
   const ElikhaParentApp({super.key});
