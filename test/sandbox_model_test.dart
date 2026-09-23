@@ -178,6 +178,17 @@ void main() {
     expect(draft.colorRequirements.single.targetId, 'cactus');
   });
 
+  test('mobile activity builder supports the rectangle object', () {
+    final draft = ActivityArDraft.parse(
+      encodeMobileActivityDescription(
+        'Build a sign',
+        allowedObjectIds: const ['rectangle'],
+      ),
+    );
+
+    expect(draft.allowedObjectIds, ['rectangle']);
+  });
+
   test('activity builder drops color rules for tools no longer selected', () {
     const staleRequirement = ActivityColorRequirement(
       targetType: 'object',

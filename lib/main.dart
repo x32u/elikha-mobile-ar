@@ -1,7 +1,10 @@
 import 'dart:async';
 
+import 'package:flex_color_scheme/flex_color_scheme.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'ar_launcher.dart';
@@ -32,15 +35,59 @@ class ElikhaMobileApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'e-Likha Mobile',
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1800AD)),
-        scaffoldBackgroundColor: const Color(0xFFF8F7F5),
+    final materialTheme =
+        FlexColorScheme.light(
+          colors: FlexSchemeColor.from(
+            primary: const Color(0xFFE8576C),
+            secondary: const Color(0xFF2A2A45),
+          ),
+          surface: Colors.white,
+          scaffoldBackground: const Color(0xFFF7F7F9),
+          appBarStyle: FlexAppBarStyle.scaffoldBackground,
+          subThemesData: const FlexSubThemesData(
+            defaultRadius: 10,
+            inputDecoratorRadius: 10,
+            navigationBarIndicatorSchemeColor: SchemeColor.primary,
+          ),
+        ).toTheme.copyWith(
+          textTheme: GoogleFonts.interTextTheme(),
+          dividerTheme: const DividerThemeData(
+            color: Color(0xFFECECEF),
+            thickness: 1,
+            space: 1,
+          ),
+        );
+    final shadTheme = ShadThemeData(
+      brightness: Brightness.light,
+      colorScheme: const ShadZincColorScheme.light(
+        background: Color(0xFFF7F7F9),
+        foreground: Color(0xFF2A2A45),
+        card: Colors.white,
+        cardForeground: Color(0xFF2A2A45),
+        primary: Color(0xFFE8576C),
+        primaryForeground: Colors.white,
+        secondary: Color(0xFFF1F1F4),
+        secondaryForeground: Color(0xFF2A2A45),
+        muted: Color(0xFFF1F1F4),
+        mutedForeground: Color(0xFF747482),
+        accent: Color(0xFFE8576C),
+        accentForeground: Colors.white,
+        border: Color(0xFFECECEF),
+        input: Color(0xFFECECEF),
+        ring: Color(0xFFE8576C),
       ),
-      home: const AuthGate(),
+      radius: const BorderRadius.all(Radius.circular(10)),
+      textTheme: ShadTextTheme.fromGoogleFont(GoogleFonts.inter),
+    );
+    return ShadApp.custom(
+      theme: shadTheme,
+      appBuilder: (context) => MaterialApp(
+        debugShowCheckedModeBanner: false,
+        title: 'e-Likha Mobile',
+        theme: materialTheme,
+        builder: (context, child) => ShadAppBuilder(child: child!),
+        home: const AuthGate(),
+      ),
     );
   }
 }
@@ -191,7 +238,7 @@ class RoleHome extends StatelessWidget {
   }
 }
 
-class HostedRoleHome extends StatelessWidget {
+class HostedRoleHome extends StatefulWidget {
   const HostedRoleHome({
     super.key,
     required this.user,
@@ -202,19 +249,107 @@ class HostedRoleHome extends StatelessWidget {
   final Future<void> Function() onSignedOut;
 
   @override
+  State<HostedRoleHome> createState() => _HostedRoleHomeState();
+}
+
+class _HostedRoleHomeState extends State<HostedRoleHome> {
+  int _selectedIndex = 0;
+
+  bool get _isSuperAdmin => widget.user.role == 'superadmin';
+
+  List<({String label, String path, IconData icon})> get _primarySections => [
+    (
+      label: 'Dashboard',
+      path: _isSuperAdmin ? '/superadmin' : '/admin',
+      icon: Icons.dashboard_rounded,
+    ),
+    (
+      label: 'Users',
+      path: _isSuperAdmin ? '/superadmin/users' : '/admin/users',
+      icon: Icons.people_rounded,
+    ),
+    (
+      label: '3D Models',
+      path: _isSuperAdmin ? '/superadmin/models' : '/admin/models',
+      icon: Icons.view_in_ar_rounded,
+    ),
+    (
+      label: 'Reports',
+      path: _isSuperAdmin ? '/superadmin/reports' : '/admin/reports',
+      icon: Icons.analytics_rounded,
+    ),
+  ];
+
+  Future<void> _openSection(BuildContext context, String path, String label) =>
+      openHostedWebExperience(
+        context,
+        trustedHostedWebBaseUri.replace(path: path),
+        title: label,
+      );
+
+  @override
   Widget build(BuildContext context) {
-    final isSuperAdmin = user.role == 'superadmin';
-    final path = isSuperAdmin ? '/superadmin' : '/admin';
-    final workspaceName = isSuperAdmin
+    final workspaceName = _isSuperAdmin
         ? 'Super Admin Workspace'
         : 'Admin Workspace';
+    final sections = _primarySections;
 
     return Scaffold(
+      drawer: Drawer(
+        child: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              ListTile(
+                title: Text(
+                  widget.user.name,
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+                subtitle: Text(widget.user.email),
+              ),
+              const Divider(),
+              if (!_isSuperAdmin)
+                ListTile(
+                  leading: const Icon(Icons.class_outlined),
+                  title: const Text('Classes'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    _openSection(context, '/admin/classes', 'Classes');
+                  },
+                ),
+              if (_isSuperAdmin)
+                ListTile(
+                  leading: const Icon(Icons.receipt_long_outlined),
+                  title: const Text('Audit trail'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    _openSection(context, '/superadmin/audit', 'Audit trail');
+                  },
+                ),
+              ListTile(
+                leading: const Icon(Icons.settings_outlined),
+                title: const Text('Settings'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _openSection(
+                    context,
+                    _isSuperAdmin ? '/superadmin/settings' : '/admin/settings',
+                    'Settings',
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
       appBar: AppBar(
         title: const Text('e-Likha Mobile'),
         actions: [
           IconButton(
-            onPressed: onSignedOut,
+            onPressed: widget.onSignedOut,
             tooltip: 'Logout',
             icon: const Icon(Icons.logout_rounded),
           ),
@@ -248,7 +383,7 @@ class HostedRoleHome extends StatelessWidget {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        '${user.name}\n${user.email}',
+                        '${widget.user.name}\n${widget.user.email}',
                         textAlign: TextAlign.center,
                         style: const TextStyle(color: Color(0xFF6B5A4D)),
                       ),
@@ -259,10 +394,10 @@ class HostedRoleHome extends StatelessWidget {
                       ),
                       const SizedBox(height: 24),
                       FilledButton.icon(
-                        onPressed: () => openHostedWebExperience(
+                        onPressed: () => _openSection(
                           context,
-                          trustedHostedWebBaseUri.replace(path: path),
-                          title: workspaceName,
+                          sections[_selectedIndex].path,
+                          sections[_selectedIndex].label,
                         ),
                         icon: const Icon(Icons.open_in_browser_rounded),
                         label: Text('Open $workspaceName'),
@@ -274,6 +409,22 @@ class HostedRoleHome extends StatelessWidget {
             ),
           ),
         ),
+      ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _selectedIndex,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
+        destinations: sections
+            .map(
+              (section) => NavigationDestination(
+                icon: Icon(section.icon),
+                label: section.label,
+              ),
+            )
+            .toList(),
+        onDestinationSelected: (index) {
+          setState(() => _selectedIndex = index);
+          _openSection(context, sections[index].path, sections[index].label);
+        },
       ),
     );
   }
