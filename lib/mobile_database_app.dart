@@ -284,6 +284,16 @@ Future<List<SandboxModelOption>> fetchSandboxModels({
 }
 
 class MobileModelLibraryService {
+  static Future<Map<String, dynamic>> storageUsage() async {
+    final token = Supabase.instance.client.auth.currentSession?.accessToken;
+    if (token == null) throw StateError('Sign in to check model storage.');
+    final response = await http.get(
+      Uri.parse('${_sandboxModelApiBase.replaceAll(RegExp(r'/+$'), '')}/storage'),
+      headers: {'Authorization': 'Bearer $token'},
+    ).timeout(const Duration(seconds: 15));
+    _requireSuccess(response);
+    return Map<String, dynamic>.from(jsonDecode(response.body)['data'] as Map);
+  }
   static const _supportedExtensions = {'obj', '3ds', 'glb', 'blend'};
   static const maxFileBytes = 50 * 1024 * 1024;
 
@@ -5055,6 +5065,7 @@ class _TeacherModelsTabState extends State<_TeacherModelsTab> {
   final _searchController = TextEditingController();
   final _catalogSearchController = TextEditingController();
   late Future<List<SandboxModelOption>> _future = fetchSandboxModels();
+  late Future<Map<String, dynamic>> _storage = MobileModelLibraryService.storageUsage();
   List<FreeModelCatalogItem> _catalogResults = const [];
   bool _catalogSearching = false;
   String _importingCatalogId = '';
@@ -5069,7 +5080,10 @@ class _TeacherModelsTabState extends State<_TeacherModelsTab> {
 
   Future<void> _refresh() async {
     final future = fetchSandboxModels();
-    setState(() => _future = future);
+    setState(() {
+      _future = future;
+      _storage = MobileModelLibraryService.storageUsage();
+    });
     await future;
   }
 
@@ -5366,12 +5380,36 @@ class _TeacherModelsTabState extends State<_TeacherModelsTab> {
             children: [
               const _HeroPanel(
                 title: '3D Model Library',
-                subtitle: 'Search and manage models shared with activities.',
+                subtitle: 'Your private models, available to students in your classes.',
                 trailing: Icon(
                   Icons.view_in_ar_rounded,
                   color: _primary,
                   size: 46,
                 ),
+              ),
+              const SizedBox(height: 16),
+              FutureBuilder<Map<String, dynamic>>(
+                future: _storage,
+                builder: (context, usage) {
+                  if (usage.hasError) return const Text('Unable to check storage. Pull down to retry.');
+                  if (!usage.hasData) return const Text('Checking model storage…');
+                  final bytes = (usage.data!['usedBytes'] as num?)?.toDouble() ?? 0;
+                  final capacity = (usage.data!['capacityBytes'] as num?)?.toDouble();
+                  return _CardShell(child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(capacity == null ? 'Total storage used' : 'Your model storage', style: const TextStyle(fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 8),
+                      Text('${(bytes / 1000000000).toStringAsFixed(2)} GB${capacity == null ? '' : ' / 15 GB'}'),
+                      if (capacity != null) ...[
+                        const SizedBox(height: 8),
+                        LinearProgressIndicator(value: (bytes / capacity).clamp(0.0, 1.0), semanticsLabel: 'Model storage used'),
+                      ],
+                      const SizedBox(height: 8),
+                      const Text('Retained files keep submitted artwork available and count toward storage.', style: TextStyle(color: _muted)),
+                    ],
+                  ));
+                },
               ),
               const SizedBox(height: 16),
               Align(
