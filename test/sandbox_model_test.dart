@@ -29,9 +29,10 @@ void main() {
     expect(source?.canManage, isTrue);
   });
 
-  test('shared catalogue merges with offline fallback models', () async {
+  test('private catalogue does not merge offline fallback models', () async {
     final client = MockClient((request) async {
       expect(request.url.path, '/models');
+      expect(request.headers['authorization'], 'Bearer test-token');
       return http.Response(
         '{"success":true,"data":['
         '{"id":"cactus","label":"Updated Cactus","fileType":"glb","isBuiltIn":true},'
@@ -41,7 +42,7 @@ void main() {
       );
     });
 
-    final models = await fetchSandboxModels(client: client);
+    final models = await fetchSandboxModels(client: client, accessToken: 'test-token');
 
     expect(models.any((model) => model.id == 'school-chair'), isTrue);
     expect(
@@ -52,18 +53,15 @@ void main() {
       models.singleWhere((model) => model.id == 'cactus').label,
       'Updated Cactus',
     );
-    expect(models.any((model) => model.id == 'tree'), isTrue);
+    expect(models.any((model) => model.id == 'tree'), isFalse);
   });
 
-  test('model catalogue failure quietly uses bundled models', () async {
+  test('model catalogue failure never exposes bundled fallback models', () async {
     final client = MockClient((_) async {
       throw http.ClientException('Browser CORS blocked the request');
     });
 
-    final models = await fetchSandboxModels(client: client);
-
-    expect(models, isNotEmpty);
-    expect(models.any((model) => model.id == 'cactus'), isTrue);
+    await expectLater(fetchSandboxModels(client: client, accessToken: 'test-token'), throwsA(isA<http.ClientException>()));
   });
 
   test('model upload uses the authenticated worker contract', () async {

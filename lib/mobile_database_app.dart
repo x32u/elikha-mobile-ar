@@ -250,13 +250,16 @@ String _normalizeRubricCode(Object? value) {
 
 Future<List<SandboxModelOption>> fetchSandboxModels({
   http.Client? client,
+  String? accessToken,
 }) async {
   final ownsClient = client == null;
   final requestClient = client ?? http.Client();
   try {
     final apiBase = _sandboxModelApiBase.replaceAll(RegExp(r'/+$'), '');
+    final token = accessToken ?? Supabase.instance.client.auth.currentSession?.accessToken;
+    if (token == null || token.isEmpty) throw StateError('Sign in to load your model library.');
     final response = await requestClient
-        .get(Uri.parse('$apiBase/models'))
+        .get(Uri.parse('$apiBase/models'), headers: {'Authorization': 'Bearer $token'})
         .timeout(const Duration(seconds: 12));
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw StateError('Model library returned ${response.statusCode}.');
@@ -267,18 +270,12 @@ Future<List<SandboxModelOption>> fetchSandboxModels({
       throw const FormatException('Invalid model library response.');
     }
 
-    final byId = <String, SandboxModelOption>{
-      for (final model in sandboxFallbackModels) model.id: model,
-    };
+    final byId = <String, SandboxModelOption>{};
     for (final entry in data) {
       final model = SandboxModelOption.fromJson(entry);
       if (model != null) byId[model.id] = model;
     }
     final models = byId.values.toList()
-      ..sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
-    return models;
-  } catch (_) {
-    final models = [...sandboxFallbackModels]
       ..sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
     return models;
   } finally {
@@ -1379,7 +1376,7 @@ class _StudentSandboxTabState extends State<_StudentSandboxTab> {
   String _difficulty = 'easy';
   bool _opening = false;
   bool _loadingModels = true;
-  List<SandboxModelOption> _models = sandboxFallbackModels;
+  List<SandboxModelOption> _models = [];
   SandboxModelOption _selectedModel = sandboxFallbackModels.firstWhere(
     (model) => model.id == 'cactus',
   );
@@ -1425,10 +1422,12 @@ class _StudentSandboxTabState extends State<_StudentSandboxTab> {
       if (!mounted) return;
       setState(() {
         _models = models;
-        _selectedModel = models.firstWhere(
-          (model) => model.id == _selectedModel.id,
-          orElse: () => models.first,
-        );
+        if (models.isNotEmpty) {
+          _selectedModel = models.firstWhere(
+            (model) => model.id == _selectedModel.id,
+            orElse: () => models.first,
+          );
+        }
         _loadingModels = false;
       });
     } catch (_) {
@@ -1453,7 +1452,7 @@ class _StudentSandboxTabState extends State<_StudentSandboxTab> {
   }
 
   Future<void> _start() async {
-    if (_opening) return;
+    if (_opening || _loadingModels || _models.isEmpty) return;
     setState(() => _opening = true);
     try {
       await openArExperience(
@@ -1498,7 +1497,7 @@ class _StudentSandboxTabState extends State<_StudentSandboxTab> {
             ),
             child: InkWell(
               borderRadius: BorderRadius.circular(16),
-              onTap: _chooseModel,
+              onTap: _loadingModels || _models.isEmpty ? null : _chooseModel,
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Row(
@@ -1514,7 +1513,7 @@ class _StudentSandboxTabState extends State<_StudentSandboxTab> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            _selectedModel.label,
+                            _models.isEmpty ? 'No models available' : _selectedModel.label,
                             style: const TextStyle(
                               fontSize: 17,
                               fontWeight: FontWeight.w900,
@@ -1606,7 +1605,7 @@ class _StudentSandboxTabState extends State<_StudentSandboxTab> {
         }),
         const SizedBox(height: 8),
         FilledButton.icon(
-          onPressed: _opening ? null : _start,
+          onPressed: _opening || _loadingModels || _models.isEmpty ? null : _start,
           icon: _opening
               ? const SizedBox.square(
                   dimension: 18,
@@ -2990,7 +2989,7 @@ class _TeacherActivityEditorPageState extends State<TeacherActivityEditorPage> {
   late List<String> _allowedColors;
   late Map<String, String> _allowedColorNames;
   late List<ActivityColorRequirement> _colorRequirements;
-  List<SandboxModelOption> _models = sandboxFallbackModels;
+  List<SandboxModelOption> _models = [];
   List<ActivityRubricOption> _rubrics = const [];
   String _rubricId = '';
   String _originalRubricId = '';
@@ -3051,7 +3050,6 @@ class _TeacherActivityEditorPageState extends State<TeacherActivityEditorPage> {
         _modelIds = _modelIds
             .where((id) => models.any((model) => model.id == id))
             .toList();
-        if (_modelIds.isEmpty) _modelIds = ['cactus'];
         _rubricId = rubricState.rubricId;
         _originalRubricId = rubricState.rubricId;
         _rubricLocked = rubricState.changeLocked;
@@ -5355,7 +5353,7 @@ class _TeacherModelsTabState extends State<_TeacherModelsTab> {
           return const Center(child: CircularProgressIndicator());
         }
         final query = _searchController.text.trim().toLowerCase();
-        final models = (snapshot.data ?? sandboxFallbackModels).where((model) {
+        final models = (snapshot.data ?? const <SandboxModelOption>[]).where((model) {
           return query.isEmpty ||
               model.label.toLowerCase().contains(query) ||
               model.description.toLowerCase().contains(query) ||
