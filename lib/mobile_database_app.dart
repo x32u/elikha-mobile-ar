@@ -15,23 +15,24 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'ar_launcher.dart';
+import 'brand_theme.dart';
 import 'hosted_web_security.dart';
 import 'r2_media_service.dart';
 
-const _primary = Color(0xFFE8576C);
-const _ink = Color(0xFF2A2A45);
-const _muted = Color(0xFF747482);
-const _surface = Color(0xFFFFFFFF);
-const _border = Color(0xFFECECEF);
-const _teacherBackground = Color(0xFFF7F7F9);
+const _primary = ElikhaBrand.primary;
+const _ink = ElikhaBrand.ink;
+const _muted = ElikhaBrand.muted;
+const _surface = ElikhaBrand.surface;
+const _border = ElikhaBrand.border;
+const _teacherBackground = ElikhaBrand.background;
 
-const _studentCream = Color(0xFFFAF7F3);
-const _studentRaspberry = Color(0xFFE8576C);
-const _studentCosmicBlue = Color(0xFF3D6FAE);
-const _studentPlum = Color(0xFF4A3F5C);
-const _studentMarigold = Color(0xFFF4A72E);
-const _studentInk = Color(0xFF2A2A45);
-const _studentSoftGrey = Color(0xFFD7D4D8);
+const _studentBackground = ElikhaBrand.background;
+const _studentPrimary = ElikhaBrand.primary;
+const _studentSecondary = ElikhaBrand.secondary;
+const _studentText = ElikhaBrand.ink;
+const _studentHighlight = ElikhaBrand.secondary;
+const _studentInk = ElikhaBrand.ink;
+const _studentSoftGrey = ElikhaBrand.muted;
 
 final _dateFormatter = DateFormat('MMM d, yyyy');
 final _dateTimeFormatter = DateFormat('MMM d, yyyy h:mm a');
@@ -256,10 +257,17 @@ Future<List<SandboxModelOption>> fetchSandboxModels({
   final requestClient = client ?? http.Client();
   try {
     final apiBase = _sandboxModelApiBase.replaceAll(RegExp(r'/+$'), '');
-    final token = accessToken ?? Supabase.instance.client.auth.currentSession?.accessToken;
-    if (token == null || token.isEmpty) throw StateError('Sign in to load your model library.');
+    final token =
+        accessToken ??
+        Supabase.instance.client.auth.currentSession?.accessToken;
+    if (token == null || token.isEmpty) {
+      throw StateError('Sign in to load your model library.');
+    }
     final response = await requestClient
-        .get(Uri.parse('$apiBase/models'), headers: {'Authorization': 'Bearer $token'})
+        .get(
+          Uri.parse('$apiBase/models'),
+          headers: {'Authorization': 'Bearer $token'},
+        )
         .timeout(const Duration(seconds: 12));
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw StateError('Model library returned ${response.statusCode}.');
@@ -287,13 +295,18 @@ class MobileModelLibraryService {
   static Future<Map<String, dynamic>> storageUsage() async {
     final token = Supabase.instance.client.auth.currentSession?.accessToken;
     if (token == null) throw StateError('Sign in to check model storage.');
-    final response = await http.get(
-      Uri.parse('${_sandboxModelApiBase.replaceAll(RegExp(r'/+$'), '')}/storage'),
-      headers: {'Authorization': 'Bearer $token'},
-    ).timeout(const Duration(seconds: 15));
+    final response = await http
+        .get(
+          Uri.parse(
+            '${_sandboxModelApiBase.replaceAll(RegExp(r'/+$'), '')}/storage',
+          ),
+          headers: {'Authorization': 'Bearer $token'},
+        )
+        .timeout(const Duration(seconds: 15));
     _requireSuccess(response);
     return Map<String, dynamic>.from(jsonDecode(response.body)['data'] as Map);
   }
+
   static const _supportedExtensions = {'obj', '3ds', 'glb', 'blend'};
   static const maxFileBytes = 50 * 1024 * 1024;
 
@@ -946,7 +959,7 @@ class _TeacherOverflowDrawer extends StatelessWidget {
           final item = entry.$2;
           yield NavigationDrawerDestination(
             icon: Icon(item.icon),
-            selectedIcon: Icon(item.icon, color: _primary),
+            selectedIcon: Icon(item.icon),
             label: Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Text(
@@ -1089,7 +1102,7 @@ class _StudentWordmark extends StatelessWidget {
             width: 31,
             height: 31,
             decoration: BoxDecoration(
-              color: _studentRaspberry,
+              color: _studentPrimary,
               borderRadius: BorderRadius.circular(10),
             ),
             child: const Icon(
@@ -1123,11 +1136,11 @@ class _StudentNavMark extends StatelessWidget {
         width: 43,
         height: 43,
         decoration: BoxDecoration(
-          color: _studentMarigold,
+          color: _studentPrimary,
           borderRadius: BorderRadius.circular(15),
           boxShadow: const [
             BoxShadow(
-              color: Color(0x224A3F5C),
+              color: ElikhaBrand.border,
               blurRadius: 0,
               offset: Offset(3, 3),
             ),
@@ -1135,7 +1148,7 @@ class _StudentNavMark extends StatelessWidget {
         ),
         child: Transform.rotate(
           angle: .08,
-          child: Icon(icon, color: _studentInk, size: 25),
+          child: Icon(icon, color: Colors.white, size: 25),
         ),
       ),
     );
@@ -1176,7 +1189,7 @@ class _RoleShellState extends State<_RoleShell> {
     final baseTheme = Theme.of(context);
     final content = Scaffold(
       backgroundColor: widget.studentStyle
-          ? _studentCream
+          ? _studentBackground
           : widget.teacherStyle
           ? _teacherBackground
           : null,
@@ -1195,7 +1208,7 @@ class _RoleShellState extends State<_RoleShell> {
                     : null,
               ),
         backgroundColor: widget.studentStyle
-            ? _studentCream
+            ? _studentBackground
             : widget.teacherStyle
             ? _teacherBackground
             : _surface,
@@ -1206,9 +1219,7 @@ class _RoleShellState extends State<_RoleShell> {
       body: SafeArea(child: widget.child),
       bottomNavigationBar: NavigationBar(
         height: widget.studentStyle ? 72 : 68,
-        backgroundColor: widget.studentStyle
-            ? const Color(0xFFFFFCF8)
-            : _surface,
+        backgroundColor: _surface,
         indicatorColor: widget.studentStyle ? Colors.transparent : null,
         labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
         selectedIndex: widget.selectedIndex,
@@ -1219,14 +1230,17 @@ class _RoleShellState extends State<_RoleShell> {
     if (!widget.studentStyle) return content;
     return Theme(
       data: baseTheme.copyWith(
-        scaffoldBackgroundColor: _studentCream,
+        scaffoldBackgroundColor: _studentBackground,
         textTheme: GoogleFonts.nunitoSansTextTheme(
           baseTheme.textTheme,
         ).apply(bodyColor: _studentInk, displayColor: _studentInk),
         colorScheme: baseTheme.colorScheme.copyWith(
-          primary: _studentPlum,
-          secondary: _studentMarigold,
+          primary: _studentPrimary,
+          onPrimary: Colors.white,
+          secondary: _studentHighlight,
+          onSecondary: _studentInk,
           surface: Colors.white,
+          onSurface: _studentInk,
         ),
       ),
       child: content,
@@ -1262,7 +1276,7 @@ class _StudentHomeTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _DataSurface(
-      backgroundColor: _studentCream,
+      backgroundColor: _studentBackground,
       loading: loading,
       error: error,
       onRefresh: onRefresh,
@@ -1400,21 +1414,21 @@ class _StudentSandboxTabState extends State<_StudentSandboxTab> {
           title: 'Easy',
           subtitle: 'Color only',
           icon: Icons.palette_outlined,
-          color: Color(0xFF10B981),
+          color: _primary,
         ),
         (
           id: 'medium',
           title: 'Medium',
           subtitle: 'Puzzle only',
           icon: Icons.extension_outlined,
-          color: Color(0xFF0EA5E9),
+          color: _primary,
         ),
         (
           id: 'advanced',
           title: 'Advanced',
           subtitle: 'Color and puzzle',
           icon: Icons.auto_awesome_outlined,
-          color: Color(0xFF7C3AED),
+          color: _primary,
         ),
       ];
 
@@ -1513,7 +1527,7 @@ class _StudentSandboxTabState extends State<_StudentSandboxTab> {
                 child: Row(
                   children: [
                     const CircleAvatar(
-                      backgroundColor: Color(0xFFEDE9FE),
+                      backgroundColor: ElikhaBrand.primaryTint,
                       foregroundColor: _primary,
                       child: Icon(Icons.view_in_ar_rounded),
                     ),
@@ -1523,7 +1537,9 @@ class _StudentSandboxTabState extends State<_StudentSandboxTab> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            _models.isEmpty ? 'No models available' : _selectedModel.label,
+                            _models.isEmpty
+                                ? 'No models available'
+                                : _selectedModel.label,
                             style: const TextStyle(
                               fontSize: 17,
                               fontWeight: FontWeight.w900,
@@ -1615,7 +1631,9 @@ class _StudentSandboxTabState extends State<_StudentSandboxTab> {
         }),
         const SizedBox(height: 8),
         FilledButton.icon(
-          onPressed: _opening || _loadingModels || _models.isEmpty ? null : _start,
+          onPressed: _opening || _loadingModels || _models.isEmpty
+              ? null
+              : _start,
           icon: _opening
               ? const SizedBox.square(
                   dimension: 18,
@@ -1810,7 +1828,7 @@ class _SandboxModelPickerSheetState extends State<_SandboxModelPickerSheet> {
                                       height: 44,
                                       alignment: Alignment.center,
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFFEDE9FE),
+                                        color: ElikhaBrand.primaryTint,
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                       child: const Icon(
@@ -1906,7 +1924,7 @@ class _StudentActivitiesTabState extends State<_StudentActivitiesTab> {
     final selected = groups[_segment];
 
     return _DataSurface(
-      backgroundColor: _studentCream,
+      backgroundColor: _studentBackground,
       loading: widget.loading,
       error: widget.error,
       onRefresh: widget.onRefresh,
@@ -1920,15 +1938,15 @@ class _StudentActivitiesTabState extends State<_StudentActivitiesTab> {
               foregroundColor: WidgetStateProperty.resolveWith(
                 (states) => states.contains(WidgetState.selected)
                     ? Colors.white
-                    : _studentPlum,
+                    : _studentText,
               ),
               backgroundColor: WidgetStateProperty.resolveWith(
                 (states) => states.contains(WidgetState.selected)
-                    ? _studentPlum
+                    ? _studentPrimary
                     : Colors.white,
               ),
               side: const WidgetStatePropertyAll(
-                BorderSide(color: Color(0xFFE7DFDA)),
+                BorderSide(color: ElikhaBrand.border),
               ),
             ),
             segments: const [
@@ -1991,7 +2009,7 @@ class _StudentProfileTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _DataSurface(
-      backgroundColor: _studentCream,
+      backgroundColor: _studentBackground,
       loading: loading,
       error: error,
       onRefresh: onRefresh,
@@ -3466,16 +3484,12 @@ class _TeacherActivityEditorPageState extends State<TeacherActivityEditorPage> {
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
               initialValue: _rubricId,
-              decoration: InputDecoration(
-                labelText: 'Rubric (optional)',
-              ),
+              decoration: InputDecoration(labelText: 'Rubric (optional)'),
               items: [
                 DropdownMenuItem(
                   value: '',
                   enabled: true,
-                  child: Text(
-                    'No rubric',
-                  ),
+                  child: Text('No rubric'),
                 ),
                 ..._rubrics.map(
                   (rubric) => DropdownMenuItem(
@@ -5065,7 +5079,8 @@ class _TeacherModelsTabState extends State<_TeacherModelsTab> {
   final _searchController = TextEditingController();
   final _catalogSearchController = TextEditingController();
   late Future<List<SandboxModelOption>> _future = fetchSandboxModels();
-  late Future<Map<String, dynamic>> _storage = MobileModelLibraryService.storageUsage();
+  late Future<Map<String, dynamic>> _storage =
+      MobileModelLibraryService.storageUsage();
   List<FreeModelCatalogItem> _catalogResults = const [];
   bool _catalogSearching = false;
   String _importingCatalogId = '';
@@ -5367,7 +5382,9 @@ class _TeacherModelsTabState extends State<_TeacherModelsTab> {
           return const Center(child: CircularProgressIndicator());
         }
         final query = _searchController.text.trim().toLowerCase();
-        final models = (snapshot.data ?? const <SandboxModelOption>[]).where((model) {
+        final models = (snapshot.data ?? const <SandboxModelOption>[]).where((
+          model,
+        ) {
           return query.isEmpty ||
               model.label.toLowerCase().contains(query) ||
               model.description.toLowerCase().contains(query) ||
@@ -5380,7 +5397,8 @@ class _TeacherModelsTabState extends State<_TeacherModelsTab> {
             children: [
               const _HeroPanel(
                 title: '3D Model Library',
-                subtitle: 'Your private models, available to students in your classes.',
+                subtitle:
+                    'Your private models, available to students in your classes.',
                 trailing: Icon(
                   Icons.view_in_ar_rounded,
                   color: _primary,
@@ -5391,24 +5409,47 @@ class _TeacherModelsTabState extends State<_TeacherModelsTab> {
               FutureBuilder<Map<String, dynamic>>(
                 future: _storage,
                 builder: (context, usage) {
-                  if (usage.hasError) return const Text('Unable to check storage. Pull down to retry.');
-                  if (!usage.hasData) return const Text('Checking model storage…');
-                  final bytes = (usage.data!['usedBytes'] as num?)?.toDouble() ?? 0;
-                  final capacity = (usage.data!['capacityBytes'] as num?)?.toDouble();
-                  return _CardShell(child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(capacity == null ? 'Total storage used' : 'Your model storage', style: const TextStyle(fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 8),
-                      Text('${(bytes / 1000000000).toStringAsFixed(2)} GB${capacity == null ? '' : ' / 15 GB'}'),
-                      if (capacity != null) ...[
+                  if (usage.hasError) {
+                    return const Text(
+                      'Unable to check storage. Pull down to retry.',
+                    );
+                  }
+                  if (!usage.hasData) {
+                    return const Text('Checking model storage…');
+                  }
+                  final bytes =
+                      (usage.data!['usedBytes'] as num?)?.toDouble() ?? 0;
+                  final capacity = (usage.data!['capacityBytes'] as num?)
+                      ?.toDouble();
+                  return _CardShell(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          capacity == null
+                              ? 'Total storage used'
+                              : 'Your model storage',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
                         const SizedBox(height: 8),
-                        LinearProgressIndicator(value: (bytes / capacity).clamp(0.0, 1.0), semanticsLabel: 'Model storage used'),
+                        Text(
+                          '${(bytes / 1000000000).toStringAsFixed(2)} GB${capacity == null ? '' : ' / 15 GB'}',
+                        ),
+                        if (capacity != null) ...[
+                          const SizedBox(height: 8),
+                          LinearProgressIndicator(
+                            value: (bytes / capacity).clamp(0.0, 1.0),
+                            semanticsLabel: 'Model storage used',
+                          ),
+                        ],
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Retained files keep submitted artwork available and count toward storage.',
+                          style: TextStyle(color: _muted),
+                        ),
                       ],
-                      const SizedBox(height: 8),
-                      const Text('Retained files keep submitted artwork available and count toward storage.', style: TextStyle(color: _muted)),
-                    ],
-                  ));
+                    ),
+                  );
                 },
               ),
               const SizedBox(height: 16),
@@ -5566,7 +5607,7 @@ class _TeacherModelsTabState extends State<_TeacherModelsTab> {
                     padding: EdgeInsets.zero,
                     child: ListTile(
                       leading: CircleAvatar(
-                        backgroundColor: const Color(0xFFF0EEFC),
+                        backgroundColor: ElikhaBrand.primaryTint,
                         foregroundColor: _primary,
                         child: const Icon(Icons.view_in_ar_rounded),
                       ),
@@ -5660,7 +5701,7 @@ class _FreeModelThumbnail extends StatelessWidget {
     width: 72,
     height: 72,
     decoration: BoxDecoration(
-      color: const Color(0xFFF0EEFC),
+      color: ElikhaBrand.primaryTint,
       borderRadius: BorderRadius.circular(12),
     ),
     child: const Icon(Icons.view_in_ar_rounded, color: _primary),
@@ -6323,7 +6364,7 @@ class _TeacherReportChart extends StatelessWidget {
                             backDrawRodData: BackgroundBarChartRodData(
                               show: true,
                               toY: 100,
-                              color: const Color(0xFFF1F1F4),
+                              color: ElikhaBrand.softBlue,
                             ),
                           ),
                         ],
@@ -6812,7 +6853,7 @@ class _MobileInsightCard extends StatelessWidget {
                   CircularProgressIndicator(
                     value: insight.progress,
                     strokeWidth: 9,
-                    backgroundColor: const Color(0xFFE8E9F3),
+                    backgroundColor: ElikhaBrand.primaryTint,
                     color: _primary,
                     strokeCap: StrokeCap.round,
                   ),
@@ -6978,8 +7019,8 @@ void _showMobileInsightLeaderboard(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
                   color: item.qualified
-                      ? const Color(0xFFF7F7F9)
-                      : const Color(0xFFF1F1F4),
+                      ? ElikhaBrand.background
+                      : ElikhaBrand.softBlue,
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: _border),
                 ),
@@ -7286,10 +7327,10 @@ class _StudentActivityDetailPageState extends State<StudentActivityDetailPage> {
     final onChanged = widget.onChanged;
     final submission = activity.submission;
     return Scaffold(
-      backgroundColor: _studentCream,
+      backgroundColor: _studentBackground,
       appBar: AppBar(
         title: Text('Activity', style: _studentHeading(23)),
-        backgroundColor: _studentCream,
+        backgroundColor: _studentBackground,
         foregroundColor: _studentInk,
       ),
       body: ListView(
@@ -7302,7 +7343,7 @@ class _StudentActivityDetailPageState extends State<StudentActivityDetailPage> {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: const Color(0xFFE9E1DC)),
+              border: Border.all(color: ElikhaBrand.border),
             ),
             child: Text(
               activity.summary.isEmpty
@@ -7311,7 +7352,7 @@ class _StudentActivityDetailPageState extends State<StudentActivityDetailPage> {
               style: GoogleFonts.nunitoSans(
                 fontSize: 16,
                 height: 1.5,
-                color: _studentPlum,
+                color: _studentText,
               ),
             ),
           ),
@@ -7372,7 +7413,7 @@ class _StudentActivityDetailPageState extends State<StudentActivityDetailPage> {
               children: [
                 FilledButton.icon(
                   style: FilledButton.styleFrom(
-                    backgroundColor: _studentPlum,
+                    backgroundColor: _studentText,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 15),
                   ),
@@ -7394,8 +7435,8 @@ class _StudentActivityDetailPageState extends State<StudentActivityDetailPage> {
                 const SizedBox(height: 10),
                 OutlinedButton.icon(
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: _studentPlum,
-                    side: const BorderSide(color: _studentPlum),
+                    foregroundColor: _studentText,
+                    side: const BorderSide(color: _studentText),
                     padding: const EdgeInsets.symmetric(vertical: 15),
                   ),
                   onPressed: () async {
@@ -7458,14 +7499,14 @@ class _StudentLessonSteps extends StatelessWidget {
         Text('Your steps', style: _studentHeading(24)),
         const SizedBox(height: 8),
         ...steps.indexed.map((entry) {
-          final color = entry.$1.isEven ? _studentMarigold : _studentCosmicBlue;
+          final color = entry.$1.isEven ? _studentHighlight : _studentSecondary;
           return Container(
             margin: const EdgeInsets.only(bottom: 9),
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: const Color(0xFFE9E1DC)),
+              border: Border.all(color: ElikhaBrand.border),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -7481,7 +7522,7 @@ class _StudentLessonSteps extends StatelessWidget {
                   child: Text(
                     '${entry.$1 + 1}',
                     style: TextStyle(
-                      color: color == _studentMarigold
+                      color: color == _studentHighlight
                           ? _studentInk
                           : Colors.white,
                       fontWeight: FontWeight.w900,
@@ -7517,7 +7558,7 @@ Future<void> _showActivityCompletionCelebration(BuildContext context) async {
     context: context,
     barrierDismissible: false,
     builder: (dialogContext) => AlertDialog(
-      backgroundColor: _studentCream,
+      backgroundColor: _studentBackground,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
       contentPadding: const EdgeInsets.fromLTRB(24, 18, 24, 24),
       content: Column(
@@ -7539,7 +7580,7 @@ Future<void> _showActivityCompletionCelebration(BuildContext context) async {
             'Your work was sent to your teacher.',
             textAlign: TextAlign.center,
             style: GoogleFonts.nunitoSans(
-              color: _studentPlum,
+              color: _studentText,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -7548,7 +7589,7 @@ Future<void> _showActivityCompletionCelebration(BuildContext context) async {
             width: double.infinity,
             child: FilledButton(
               style: FilledButton.styleFrom(
-                backgroundColor: _studentPlum,
+                backgroundColor: _studentText,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 14),
               ),
@@ -8228,7 +8269,7 @@ class _StudentHeroCard extends StatelessWidget {
       constraints: const BoxConstraints(minHeight: 206),
       padding: const EdgeInsets.fromLTRB(22, 22, 16, 18),
       decoration: BoxDecoration(
-        color: _studentRaspberry,
+        color: _studentPrimary,
         borderRadius: BorderRadius.circular(28),
       ),
       child: Row(
@@ -8256,8 +8297,8 @@ class _StudentHeroCard extends StatelessWidget {
                 FilledButton.icon(
                   onPressed: onOpenActivities,
                   style: FilledButton.styleFrom(
-                    backgroundColor: _studentPlum,
-                    foregroundColor: Colors.white,
+                    backgroundColor: _studentSecondary,
+                    foregroundColor: _studentInk,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 16,
                       vertical: 12,
@@ -8293,18 +8334,18 @@ class _LearningIllustration extends StatelessWidget {
               width: 112,
               height: 126,
               decoration: BoxDecoration(
-                color: const Color(0xFFFFE7C2),
+                color: ElikhaBrand.surface,
                 borderRadius: BorderRadius.circular(26),
               ),
             ),
           ),
-          const Icon(Icons.menu_book_rounded, size: 72, color: _studentPlum),
+          const Icon(Icons.menu_book_rounded, size: 72, color: _studentText),
           const Positioned(
             top: 4,
             right: 4,
             child: Icon(
               Icons.auto_awesome_rounded,
-              color: _studentMarigold,
+              color: _studentHighlight,
               size: 34,
             ),
           ),
@@ -8315,12 +8356,12 @@ class _LearningIllustration extends StatelessWidget {
               width: 34,
               height: 34,
               decoration: const BoxDecoration(
-                color: _studentCosmicBlue,
+                color: _studentSecondary,
                 shape: BoxShape.circle,
               ),
               child: const Icon(
                 Icons.brush_rounded,
-                color: Colors.white,
+                color: _studentInk,
                 size: 20,
               ),
             ),
@@ -8349,7 +8390,7 @@ class _StudentPromoCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(21, 18, 16, 18),
       decoration: BoxDecoration(
-        color: _studentCosmicBlue,
+        color: _studentSecondary,
         borderRadius: BorderRadius.circular(26),
       ),
       child: Row(
@@ -8358,18 +8399,18 @@ class _StudentPromoCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: _studentHeading(21, color: Colors.white)),
+                Text(title, style: _studentHeading(21)),
                 const SizedBox(height: 3),
                 Text(
                   subtitle,
-                  style: const TextStyle(color: Colors.white, height: 1.3),
+                  style: const TextStyle(color: _studentInk, height: 1.3),
                 ),
                 const SizedBox(height: 13),
                 FilledButton.icon(
                   onPressed: onPressed,
                   style: FilledButton.styleFrom(
-                    backgroundColor: _studentMarigold,
-                    foregroundColor: _studentInk,
+                    backgroundColor: _studentPrimary,
+                    foregroundColor: Colors.white,
                     visualDensity: VisualDensity.compact,
                   ),
                   icon: const Icon(Icons.play_arrow_rounded, size: 19),
@@ -8408,22 +8449,22 @@ class _PalettePostcard extends StatelessWidget {
                 width: 76,
                 height: 76,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFFE7C2),
+                  color: ElikhaBrand.surface,
                   borderRadius: BorderRadius.circular(25),
                 ),
-                child: Icon(icon, color: _studentPlum, size: 42),
+                child: Icon(icon, color: _studentText, size: 42),
               ),
             ),
           ),
           const Positioned(
             left: 4,
             top: 2,
-            child: _PaintDot(color: _studentRaspberry, size: 24),
+            child: _PaintDot(color: _studentPrimary, size: 24),
           ),
           const Positioned(
             left: 13,
             bottom: 4,
-            child: _PaintDot(color: _studentMarigold, size: 17),
+            child: _PaintDot(color: _studentHighlight, size: 17),
           ),
           const Positioned(
             right: 0,
@@ -8486,10 +8527,10 @@ class _StudentProgressStrip extends StatelessWidget {
                 final index = entry.$1;
                 final item = entry.$2;
                 const colors = [
-                  _studentRaspberry,
-                  _studentMarigold,
-                  _studentCosmicBlue,
-                  _studentPlum,
+                  _studentPrimary,
+                  _studentHighlight,
+                  _studentSecondary,
+                  _studentText,
                 ];
                 const icons = [
                   Icons.auto_awesome_rounded,
@@ -8519,7 +8560,11 @@ class _StudentProgressStrip extends StatelessWidget {
                                   child: Icon(
                                     icons[index],
                                     size: 17,
-                                    color: Colors.white.withValues(alpha: .68),
+                                    color:
+                                        (index == 1 || index == 2
+                                                ? _studentInk
+                                                : Colors.white)
+                                            .withValues(alpha: .68),
                                   ),
                                 ),
                                 Center(
@@ -8527,7 +8572,7 @@ class _StudentProgressStrip extends StatelessWidget {
                                     item.$2.toString(),
                                     style: _studentHeading(
                                       24,
-                                      color: index == 1
+                                      color: index == 1 || index == 2
                                           ? _studentInk
                                           : Colors.white,
                                     ),
@@ -8542,7 +8587,7 @@ class _StudentProgressStrip extends StatelessWidget {
                           item.$1,
                           maxLines: 1,
                           style: const TextStyle(
-                            color: _studentPlum,
+                            color: _studentText,
                             fontSize: 11,
                             fontWeight: FontWeight.w900,
                           ),
@@ -8582,7 +8627,7 @@ class _CreativeTrailPainter extends CustomPainter {
         61,
       );
     final paint = Paint()
-      ..color = _studentCosmicBlue.withValues(alpha: .24)
+      ..color = _studentSecondary.withValues(alpha: .24)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3
       ..strokeCap = StrokeCap.round;
@@ -8602,7 +8647,7 @@ class _StudentActivityBanner extends StatelessWidget {
       height: 150,
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        color: _studentCosmicBlue,
+        color: _studentSecondary,
         borderRadius: BorderRadius.circular(28),
       ),
       child: Row(
@@ -8612,14 +8657,11 @@ class _StudentActivityBanner extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(
-                  'Your activity trail',
-                  style: _studentHeading(27, color: Colors.white),
-                ),
+                Text('Your activity trail', style: _studentHeading(27)),
                 const SizedBox(height: 5),
                 const Text(
                   'Choose the next lesson and keep creating.',
-                  style: TextStyle(color: Colors.white, height: 1.35),
+                  style: TextStyle(color: _studentInk, height: 1.35),
                 ),
               ],
             ),
@@ -8629,13 +8671,13 @@ class _StudentActivityBanner extends StatelessWidget {
             width: 86,
             height: 86,
             decoration: BoxDecoration(
-              color: const Color(0xFFFFE7C2),
+              color: ElikhaBrand.surface,
               borderRadius: BorderRadius.circular(24),
             ),
             child: const Icon(
               Icons.route_rounded,
               size: 48,
-              color: _studentRaspberry,
+              color: _studentPrimary,
             ),
           ),
         ],
@@ -8660,7 +8702,7 @@ class _StudentProfileHero extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        color: _studentRaspberry,
+        color: _studentPrimary,
         borderRadius: BorderRadius.circular(28),
       ),
       child: Row(
@@ -8696,7 +8738,7 @@ class _StudentProfileHero extends StatelessWidget {
           const SizedBox(width: 12),
           const Icon(
             Icons.emoji_events_rounded,
-            color: _studentMarigold,
+            color: _studentHighlight,
             size: 76,
           ),
         ],
@@ -8716,7 +8758,7 @@ class _StudentBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: _studentMarigold,
+        color: _studentHighlight,
         borderRadius: BorderRadius.circular(99),
       ),
       child: Row(
@@ -8758,7 +8800,7 @@ class _StudentIdentityRow extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFE9E1DC)),
+        border: Border.all(color: ElikhaBrand.border),
       ),
       child: Row(
         children: [
@@ -8768,7 +8810,7 @@ class _StudentIdentityRow extends StatelessWidget {
             size: 62,
             fallback: CircleAvatar(
               radius: 31,
-              backgroundColor: _studentPlum,
+              backgroundColor: _studentText,
               child: Text(
                 _initials(name),
                 style: const TextStyle(
@@ -8787,13 +8829,13 @@ class _StudentIdentityRow extends StatelessWidget {
                 Text(
                   email,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: _studentPlum),
+                  style: const TextStyle(color: _studentText),
                 ),
                 Text(
                   className,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    color: _studentCosmicBlue,
+                    color: _studentPrimary,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -9043,9 +9085,9 @@ class _StudentNotificationNotebook extends StatelessWidget {
     final hasUnread = visible.any((item) => !item.isRead);
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFFFFFCF8),
+        color: ElikhaBrand.surface,
         borderRadius: BorderRadius.circular(27),
-        border: Border.all(color: const Color(0xFFE8DDD5)),
+        border: Border.all(color: ElikhaBrand.border),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(26),
@@ -9057,7 +9099,7 @@ class _StudentNotificationNotebook extends StatelessWidget {
               bottom: 0,
               child: SizedBox(
                 width: 8,
-                child: ColoredBox(color: _studentRaspberry),
+                child: ColoredBox(color: _studentPrimary),
               ),
             ),
             Padding(
@@ -9074,12 +9116,12 @@ class _StudentNotificationNotebook extends StatelessWidget {
                             width: 38,
                             height: 38,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFFFE7C2),
+                              color: ElikhaBrand.surface,
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: const Icon(
                               Icons.notifications_active_rounded,
-                              color: _studentPlum,
+                              color: _studentText,
                               size: 21,
                             ),
                           ),
@@ -9103,7 +9145,7 @@ class _StudentNotificationNotebook extends StatelessWidget {
                         alignment: Alignment.centerLeft,
                         child: Text(
                           'You’re all caught up. New activity updates will appear here.',
-                          style: TextStyle(color: _studentPlum, height: 1.4),
+                          style: TextStyle(color: _studentText, height: 1.4),
                         ),
                       ),
                     )
@@ -9126,14 +9168,14 @@ class _StudentNotificationNotebook extends StatelessWidget {
                           Text(
                             'Open notification notebook',
                             style: TextStyle(
-                              color: _studentPlum,
+                              color: _studentText,
                               fontWeight: FontWeight.w900,
                             ),
                           ),
                           SizedBox(width: 6),
                           Icon(
                             Icons.arrow_forward_rounded,
-                            color: _studentRaspberry,
+                            color: _studentPrimary,
                             size: 20,
                           ),
                         ],
@@ -9182,9 +9224,7 @@ class _StudentNotificationLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = notification.isRead
-        ? const Color(0xFFB3AAA4)
-        : _studentCosmicBlue;
+    final accent = notification.isRead ? ElikhaBrand.muted : _studentPrimary;
     return Column(
       children: [
         if (showRule) const Divider(height: 1, indent: 18, endIndent: 18),
@@ -9232,7 +9272,7 @@ class _StudentNotificationLine extends StatelessWidget {
                               width: 8,
                               height: 8,
                               decoration: const BoxDecoration(
-                                color: _studentRaspberry,
+                                color: _studentPrimary,
                                 shape: BoxShape.circle,
                               ),
                             ),
@@ -9243,13 +9283,13 @@ class _StudentNotificationLine extends StatelessWidget {
                         notification.message,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: _studentPlum),
+                        style: const TextStyle(color: _studentText),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         _formatDateTime(notification.createdAt),
                         style: TextStyle(
-                          color: _studentPlum.withValues(alpha: .67),
+                          color: _studentText.withValues(alpha: .67),
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
                         ),
@@ -9263,7 +9303,7 @@ class _StudentNotificationLine extends StatelessWidget {
                     padding: EdgeInsets.only(top: 8),
                     child: Icon(
                       Icons.chevron_right_rounded,
-                      color: _studentPlum,
+                      color: _studentText,
                     ),
                   ),
                 ],
@@ -9372,8 +9412,8 @@ class _NotificationTile extends StatelessWidget {
         contentPadding: const EdgeInsets.all(14),
         leading: CircleAvatar(
           backgroundColor: notification.isRead
-              ? const Color(0xFFF5F0EB)
-              : const Color(0xFFF0EEFC),
+              ? ElikhaBrand.softBlue
+              : ElikhaBrand.primaryTint,
           foregroundColor: notification.isRead ? _muted : _primary,
           child: Icon(_notificationIcon(notification.type)),
         ),
@@ -9413,19 +9453,19 @@ class _StudentActivityRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final statusColor = activity.isReviewed
-        ? _studentCosmicBlue
+        ? _studentSecondary
         : activity.isSubmitted
-        ? _studentPlum
+        ? _studentText
         : activity.isOverdue
-        ? _studentRaspberry
-        : _studentMarigold;
+        ? const Color(0xFFB42318)
+        : _studentHighlight;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Material(
         color: Colors.white,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(24),
-          side: const BorderSide(color: Color(0xFFE9E1DC)),
+          side: const BorderSide(color: ElikhaBrand.border),
         ),
         child: InkWell(
           borderRadius: BorderRadius.circular(24),
@@ -9445,7 +9485,9 @@ class _StudentActivityRow extends StatelessWidget {
                     activity.isReviewed
                         ? Icons.star_rounded
                         : Icons.brush_rounded,
-                    color: statusColor,
+                    color: statusColor == _studentSecondary
+                        ? _studentPrimary
+                        : statusColor,
                   ),
                 ),
                 const SizedBox(width: 13),
@@ -9463,7 +9505,7 @@ class _StudentActivityRow extends StatelessWidget {
                       Text(
                         'Due ${_formatDate(activity.dueDate)}',
                         style: const TextStyle(
-                          color: _studentPlum,
+                          color: _studentText,
                           fontSize: 12,
                         ),
                       ),
@@ -9483,7 +9525,7 @@ class _StudentActivityRow extends StatelessWidget {
                   child: Text(
                     activity.studentStatusLabel,
                     style: TextStyle(
-                      color: statusColor == _studentMarigold
+                      color: statusColor == _studentHighlight
                           ? _studentInk
                           : Colors.white,
                       fontSize: 11,
@@ -9492,7 +9534,7 @@ class _StudentActivityRow extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 5),
-                const Icon(Icons.chevron_right_rounded, color: _studentPlum),
+                const Icon(Icons.chevron_right_rounded, color: _studentText),
               ],
             ),
           ),
@@ -9513,7 +9555,7 @@ class _ActivityHero extends StatelessWidget {
       height: 220,
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        color: _studentRaspberry,
+        color: _studentPrimary,
         borderRadius: BorderRadius.circular(28),
       ),
       child: Row(
@@ -9542,19 +9584,19 @@ class _ActivityHero extends StatelessWidget {
             width: 98,
             height: 112,
             decoration: BoxDecoration(
-              color: const Color(0xFFFFE7C2),
+              color: ElikhaBrand.surface,
               borderRadius: BorderRadius.circular(26),
             ),
             child: const Stack(
               alignment: Alignment.center,
               children: [
-                Icon(Icons.draw_rounded, color: _studentPlum, size: 58),
+                Icon(Icons.draw_rounded, color: _studentText, size: 58),
                 Positioned(
                   right: 7,
                   top: 7,
                   child: Icon(
                     Icons.auto_awesome_rounded,
-                    color: _studentMarigold,
+                    color: _studentHighlight,
                     size: 25,
                   ),
                 ),
@@ -9722,17 +9764,17 @@ class _Thumbnail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final decoration = BoxDecoration(
-      gradient: _pastelGradient(seed),
+      gradient: _brandThumbnailGradient(seed),
       borderRadius: BorderRadius.circular(square ? 14 : 0),
     );
 
     final child = url.isEmpty
-        ? const Icon(Icons.image_outlined, color: Colors.white, size: 34)
+        ? const Icon(Icons.image_outlined, color: _primary, size: 34)
         : Image.network(
             url,
             fit: BoxFit.contain,
             errorBuilder: (context, error, stackTrace) =>
-                const Icon(Icons.image_outlined, color: Colors.white, size: 34),
+                const Icon(Icons.image_outlined, color: _primary, size: 34),
           );
 
     if (!square) {
@@ -9852,7 +9894,7 @@ class _ClassTile extends StatelessWidget {
           ownerId: klass.id,
           legacyPath: klass.imagePath,
           fallback: CircleAvatar(
-            backgroundColor: const Color(0xFFF1F1F4),
+            backgroundColor: ElikhaBrand.softBlue,
             foregroundColor: _ink,
             child: Text(klass.initial),
           ),
@@ -10375,7 +10417,7 @@ class _Chip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: const Color(0xFFF5F0EB),
+        color: ElikhaBrand.softBlue,
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: _border),
       ),
@@ -10555,7 +10597,7 @@ Future<void> _classDialog({
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFF),
+                  color: ElikhaBrand.softBlue,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(color: _border),
                 ),
@@ -10572,7 +10614,7 @@ Future<void> _classDialog({
                               )
                             : removeImage || classItem == null
                             ? Container(
-                                color: const Color(0xFFF0EEFC),
+                                color: ElikhaBrand.primaryTint,
                                 child: const Icon(
                                   Icons.image_outlined,
                                   color: _primary,
@@ -10585,7 +10627,7 @@ Future<void> _classDialog({
                                 size: 72,
                                 borderRadius: 16,
                                 fallback: Container(
-                                  color: const Color(0xFFF0EEFC),
+                                  color: ElikhaBrand.primaryTint,
                                   child: const Icon(
                                     Icons.image_outlined,
                                     color: _primary,
@@ -14165,14 +14207,10 @@ String _initials(String name) {
   return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
 }
 
-LinearGradient _pastelGradient(String seed) {
+LinearGradient _brandThumbnailGradient(String seed) {
   const palettes = [
-    [Color(0xFFE1F5FE), Color(0xFFB3E5FC)],
-    [Color(0xFFE0F2F1), Color(0xFFB2DFDB)],
-    [Color(0xFFF3E5F5), Color(0xFFE1BEE7)],
-    [Color(0xFFFFF3E0), Color(0xFFFFCCBC)],
-    [Color(0xFFE8F5E9), Color(0xFFC8E6C9)],
-    [Color(0xFFFFEBEE), Color(0xFFFFCDD2)],
+    [ElikhaBrand.softBlue, ElikhaBrand.primaryTint],
+    [ElikhaBrand.primaryTint, ElikhaBrand.softBlue],
   ];
   final index =
       seed.codeUnits.fold<int>(0, (sum, code) => sum + code) % palettes.length;

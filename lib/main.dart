@@ -1,13 +1,12 @@
 import 'dart:async';
 
-import 'package:flex_color_scheme/flex_color_scheme.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'ar_launcher.dart';
+import 'brand_theme.dart';
 import 'hosted_web_security.dart';
 import 'mobile_database_app.dart';
 import 'roles/student/services/session_service.dart' as student_session;
@@ -35,56 +34,12 @@ class ElikhaMobileApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final materialTheme =
-        FlexColorScheme.light(
-          colors: FlexSchemeColor.from(
-            primary: const Color(0xFFE8576C),
-            secondary: const Color(0xFF2A2A45),
-          ),
-          surface: Colors.white,
-          scaffoldBackground: const Color(0xFFF7F7F9),
-          appBarStyle: FlexAppBarStyle.scaffoldBackground,
-          subThemesData: const FlexSubThemesData(
-            defaultRadius: 10,
-            inputDecoratorRadius: 10,
-            navigationBarIndicatorSchemeColor: SchemeColor.primary,
-          ),
-        ).toTheme.copyWith(
-          textTheme: GoogleFonts.interTextTheme(),
-          dividerTheme: const DividerThemeData(
-            color: Color(0xFFECECEF),
-            thickness: 1,
-            space: 1,
-          ),
-        );
-    final shadTheme = ShadThemeData(
-      brightness: Brightness.light,
-      colorScheme: const ShadZincColorScheme.light(
-        background: Color(0xFFF7F7F9),
-        foreground: Color(0xFF2A2A45),
-        card: Colors.white,
-        cardForeground: Color(0xFF2A2A45),
-        primary: Color(0xFFE8576C),
-        primaryForeground: Colors.white,
-        secondary: Color(0xFFF1F1F4),
-        secondaryForeground: Color(0xFF2A2A45),
-        muted: Color(0xFFF1F1F4),
-        mutedForeground: Color(0xFF747482),
-        accent: Color(0xFFE8576C),
-        accentForeground: Colors.white,
-        border: Color(0xFFECECEF),
-        input: Color(0xFFECECEF),
-        ring: Color(0xFFE8576C),
-      ),
-      radius: const BorderRadius.all(Radius.circular(10)),
-      textTheme: ShadTextTheme.fromGoogleFont(GoogleFonts.inter),
-    );
     return ShadApp.custom(
-      theme: shadTheme,
+      theme: ElikhaBrand.shadTheme(),
       appBuilder: (context) => MaterialApp(
         debugShowCheckedModeBanner: false,
         title: 'e-Likha Mobile',
-        theme: materialTheme,
+        theme: ElikhaBrand.materialTheme(),
         builder: (context, child) => ShadAppBuilder(child: child!),
         home: const AuthGate(),
       ),
@@ -370,7 +325,7 @@ class _HostedRoleHomeState extends State<HostedRoleHome> {
                       const Icon(
                         Icons.admin_panel_settings_rounded,
                         size: 64,
-                        color: Color(0xFF1800AD),
+                        color: ElikhaBrand.primary,
                       ),
                       const SizedBox(height: 18),
                       Text(
@@ -385,7 +340,7 @@ class _HostedRoleHomeState extends State<HostedRoleHome> {
                       Text(
                         '${widget.user.name}\n${widget.user.email}',
                         textAlign: TextAlign.center,
-                        style: const TextStyle(color: Color(0xFF6B5A4D)),
+                        style: const TextStyle(color: ElikhaBrand.muted),
                       ),
                       const SizedBox(height: 24),
                       const Text(
@@ -510,14 +465,14 @@ class _LoginScreenState extends State<LoginScreen> {
                       style: TextStyle(
                         fontSize: 32,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF141217),
+                        color: ElikhaBrand.ink,
                       ),
                     ),
                     const SizedBox(height: 8),
                     const Text(
                       'Your dashboard opens based on your database role.',
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: Color(0xFF6B5A4D)),
+                      style: TextStyle(color: ElikhaBrand.muted),
                     ),
                     const SizedBox(height: 24),
                     TextFormField(
@@ -579,7 +534,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     FilledButton(
                       onPressed: _isLoading ? null : _submit,
                       style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFF1800AD),
+                        backgroundColor: ElikhaBrand.primary,
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 14),
                       ),
@@ -587,7 +542,10 @@ class _LoginScreenState extends State<LoginScreen> {
                           ? const SizedBox(
                               width: 18,
                               height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: ElikhaBrand.surface,
+                              ),
                             )
                           : const Text('Sign In'),
                     ),
@@ -856,7 +814,7 @@ class _PasswordRecoveryScreenState extends State<PasswordRecoveryScreen> {
                         Text(
                           _subtitle,
                           textAlign: TextAlign.center,
-                          style: const TextStyle(color: Color(0xFF6B5A4D)),
+                          style: const TextStyle(color: ElikhaBrand.muted),
                         ),
                         const SizedBox(height: 24),
                         _buildStep(),
