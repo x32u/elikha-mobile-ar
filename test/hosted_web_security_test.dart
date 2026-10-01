@@ -2,6 +2,48 @@ import 'package:elikha_mobile/hosted_web_security.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test(
+    'Sandbox auto-launch retains the selected model, difficulty and student',
+    () {
+      final uri = buildSandboxArLaunchUri(
+        studentId: 'student-1',
+        modelId: 'Torii Shrine_1',
+        difficulty: 'easy',
+      );
+      expect(isTrustedHostedWebUri(uri), isTrue);
+      expect(uri.path, '/sandbox');
+      expect(uri.queryParameters, {
+        'mobile': '1',
+        'autostart': '1',
+        'studentId': 'student-1',
+        'model': 'Torii Shrine_1',
+        'difficulty': 'easy',
+      });
+    },
+  );
+
+  test(
+    'Sandbox auto-launch rejects missing identity and invalid difficulty',
+    () {
+      expect(
+        () => buildSandboxArLaunchUri(
+          studentId: '',
+          modelId: 'torii',
+          difficulty: 'easy',
+        ),
+        throwsFormatException,
+      );
+      expect(
+        () => buildSandboxArLaunchUri(
+          studentId: 'student-1',
+          modelId: 'torii',
+          difficulty: 'unknown',
+        ),
+        throwsFormatException,
+      );
+    },
+  );
+
   group('trusted hosted web URLs', () {
     test('accepts routes on the configured e-Likha origin', () {
       expect(

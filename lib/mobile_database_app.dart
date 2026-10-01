@@ -1505,17 +1505,21 @@ class _StudentSandboxTabState extends State<_StudentSandboxTab> {
     try {
       await openArExperience(
         context,
-        trustedHostedWebBaseUri.replace(
-          path: '/sandbox',
-          queryParameters: {
-            'mobile': '1',
-            'autostart': '1',
-            'difficulty': _difficulty,
-            'model': _selectedModel.id,
-          },
+        buildSandboxArLaunchUri(
+          studentId: Supabase.instance.client.auth.currentUser?.id ?? '',
+          modelId: _selectedModel.id,
+          difficulty: _difficulty,
         ),
       );
       widget.onRefresh();
+    } on FormatException {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Sign in again, then select a Sandbox model.'),
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _opening = false);
     }

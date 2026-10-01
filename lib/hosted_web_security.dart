@@ -45,6 +45,32 @@ const Set<String> _sensitiveQueryParameterNames = <String>{
   'token',
 };
 
+/// Opens exactly the selected Sandbox model for the signed-in native student.
+/// Identity is checked again by the web app; no credentials travel in the URL.
+Uri buildSandboxArLaunchUri({
+  required String studentId,
+  required String modelId,
+  required String difficulty,
+}) {
+  if (studentId.trim().isEmpty ||
+      modelId.trim().isEmpty ||
+      !const {'easy', 'medium', 'advanced'}.contains(difficulty)) {
+    throw const FormatException(
+      'Select a student, model, and Sandbox difficulty.',
+    );
+  }
+  return trustedHostedWebBaseUri.replace(
+    path: '/sandbox',
+    queryParameters: {
+      'mobile': '1',
+      'autostart': '1',
+      'studentId': studentId,
+      'model': modelId,
+      'difficulty': difficulty,
+    },
+  );
+}
+
 /// Returns whether [uri] belongs to the configured e-Likha web application.
 ///
 /// Authentication credentials are deliberately rejected in the query string.
