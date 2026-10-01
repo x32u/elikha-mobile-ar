@@ -15,6 +15,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'ar_launcher.dart';
+import 'artwork_export.dart';
 import 'brand_theme.dart';
 import 'hosted_web_security.dart';
 import 'r2_media_service.dart';
@@ -995,6 +996,7 @@ class ParentDatabaseShell extends StatefulWidget {
 class _ParentDatabaseShellState extends State<ParentDatabaseShell> {
   int _index = 0;
   late Future<ParentBundle> _future;
+  late ParentReadAccess _accountAccess;
   RealtimeChannel? _notificationChannel;
   late final AppLifecycleListener _lifecycleListener;
 
@@ -1002,13 +1004,30 @@ class _ParentDatabaseShellState extends State<ParentDatabaseShell> {
   void initState() {
     super.initState();
     _future = MobileDataService.loadParentBundle(widget.userId);
+    _accountAccess = ParentReadAccess.forAccount(widget.userId);
     _notificationChannel = _subscribeToNotifications(widget.userId, _refresh);
     _lifecycleListener = AppLifecycleListener(onResume: _refresh);
   }
 
   @override
+  void didUpdateWidget(covariant ParentDatabaseShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.userId == widget.userId) return;
+    _accountAccess.dispose();
+    _accountAccess = ParentReadAccess.forAccount(widget.userId);
+    final channel = _notificationChannel;
+    if (channel != null) {
+      unawaited(Supabase.instance.client.removeChannel(channel));
+    }
+    _index = 0;
+    _future = MobileDataService.loadParentBundle(widget.userId);
+    _notificationChannel = _subscribeToNotifications(widget.userId, _refresh);
+  }
+
+  @override
   void dispose() {
     _lifecycleListener.dispose();
+    _accountAccess.dispose();
     final channel = _notificationChannel;
     if (channel != null) {
       unawaited(Supabase.instance.client.removeChannel(channel));
@@ -1025,65 +1044,70 @@ class _ParentDatabaseShellState extends State<ParentDatabaseShell> {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<ParentBundle>(
-      future: _future,
-      builder: (context, snapshot) {
-        final bundle = snapshot.data;
-        final loading = snapshot.connectionState != ConnectionState.done;
-        final tabs = [
-          _ParentHomeTab(
-            name: widget.name,
-            bundle: bundle,
-            loading: loading,
-            error: snapshot.error,
-            onOpenChildren: () => setState(() => _index = 1),
-            onRefresh: _refresh,
-          ),
-          _ParentChildrenTab(
-            bundle: bundle,
-            loading: loading,
-            error: snapshot.error,
-            onRefresh: _refresh,
-          ),
-          _ParentSettingsTab(
-            userId: widget.userId,
-            name: widget.name,
-            email: widget.email,
-            onSignedOut: widget.onSignedOut,
-          ),
-        ];
+    return _ParentAccessGuard(
+      access: _accountAccess,
+      studentId: '',
+      child: FutureBuilder<ParentBundle>(
+        key: ValueKey(widget.userId),
+        future: _future,
+        builder: (context, snapshot) {
+          final bundle = snapshot.data;
+          final loading = snapshot.connectionState != ConnectionState.done;
+          final tabs = [
+            _ParentHomeTab(
+              name: widget.name,
+              bundle: bundle,
+              loading: loading,
+              error: snapshot.error,
+              onOpenChildren: () => setState(() => _index = 1),
+              onRefresh: _refresh,
+            ),
+            _ParentChildrenTab(
+              bundle: bundle,
+              loading: loading,
+              error: snapshot.error,
+              onRefresh: _refresh,
+            ),
+            _ParentSettingsTab(
+              userId: widget.userId,
+              name: widget.name,
+              email: widget.email,
+              onSignedOut: widget.onSignedOut,
+            ),
+          ];
 
-        return _RoleShell(
-          title: 'e-Likha Parent',
-          selectedIndex: _index,
-          onDestinationSelected: (index) => setState(() => _index = index),
-          destinations: const [
-            NavigationDestination(
-              icon: Icon(Icons.home_outlined),
-              selectedIcon: Icon(Icons.home_rounded),
-              label: 'Home',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.family_restroom_outlined),
-              selectedIcon: Icon(Icons.family_restroom_rounded),
-              label: 'Children',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.settings_outlined),
-              selectedIcon: Icon(Icons.settings_rounded),
-              label: 'Settings',
-            ),
-          ],
-          actions: [
-            IconButton(
-              onPressed: _refresh,
-              icon: const Icon(Icons.refresh_rounded),
-              tooltip: 'Refresh',
-            ),
-          ],
-          child: tabs[_index],
-        );
-      },
+          return _RoleShell(
+            title: 'e-Likha Parent',
+            selectedIndex: _index,
+            onDestinationSelected: (index) => setState(() => _index = index),
+            destinations: const [
+              NavigationDestination(
+                icon: Icon(Icons.home_outlined),
+                selectedIcon: Icon(Icons.home_rounded),
+                label: 'Home',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.family_restroom_outlined),
+                selectedIcon: Icon(Icons.family_restroom_rounded),
+                label: 'Children',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.settings_outlined),
+                selectedIcon: Icon(Icons.settings_rounded),
+                label: 'Settings',
+              ),
+            ],
+            actions: [
+              IconButton(
+                onPressed: _refresh,
+                icon: const Icon(Icons.refresh_rounded),
+                tooltip: 'Refresh',
+              ),
+            ],
+            child: tabs[_index],
+          );
+        },
+      ),
     );
   }
 }
@@ -6076,9 +6100,14 @@ class AccountSettingsPage extends StatelessWidget {
 }
 
 class NotificationsPage extends StatefulWidget {
-  const NotificationsPage({super.key, required this.userId});
+  const NotificationsPage({
+    super.key,
+    required this.userId,
+    this.parentMode = false,
+  });
 
   final String userId;
+  final bool parentMode;
 
   @override
   State<NotificationsPage> createState() => _NotificationsPageState();
@@ -6086,11 +6115,21 @@ class NotificationsPage extends StatefulWidget {
 
 class _NotificationsPageState extends State<NotificationsPage> {
   late Future<List<DbNotification>> _future;
+  ParentReadAccess? _parentAccess;
 
   @override
   void initState() {
     super.initState();
     _future = MobileDataService.fetchNotifications(widget.userId);
+    if (widget.parentMode) {
+      _parentAccess = ParentReadAccess.forAccount(widget.userId);
+    }
+  }
+
+  @override
+  void dispose() {
+    _parentAccess?.dispose();
+    super.dispose();
   }
 
   void _refresh() {
@@ -6101,7 +6140,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    final page = Scaffold(
       appBar: AppBar(title: const Text('Notifications')),
       body: FutureBuilder<List<DbNotification>>(
         future: _future,
@@ -6117,12 +6156,26 @@ class _NotificationsPageState extends State<NotificationsPage> {
                 notifications: snapshot.data ?? const [],
                 limit: 100,
                 onChanged: _refresh,
+                onOpen: widget.parentMode
+                    ? (context, notification) => _openParentNotification(
+                        context,
+                        widget.userId,
+                        notification,
+                      )
+                    : null,
               ),
             ],
           ),
         ),
       ),
     );
+    return _parentAccess == null
+        ? page
+        : _ParentAccessGuard(
+            access: _parentAccess!,
+            studentId: '',
+            child: page,
+          );
   }
 }
 
@@ -7114,8 +7167,8 @@ class _ParentHomeTab extends StatelessWidget {
         padding: const EdgeInsets.all(18),
         children: [
           _HeroPanel(
-            title: 'Parent Dashboard',
-            subtitle: 'Welcome, $name',
+            title: 'Your children’s learning',
+            subtitle: 'Welcome, $name. See their work and teacher feedback.',
             trailing: const Icon(
               Icons.family_restroom_rounded,
               color: _primary,
@@ -7148,27 +7201,52 @@ class _ParentHomeTab extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 18),
+          _SectionHeader(
+            title: 'Children',
+            actionLabel: 'View all',
+            onAction: onOpenChildren,
+          ),
+          if (!loading && error == null && (bundle?.children ?? []).isEmpty)
+            const _EmptyCard(
+              icon: Icons.link_off_rounded,
+              title: 'No linked students',
+              body: 'Ask your school to link your account to your child.',
+            )
+          else if (bundle != null)
+            ...bundle!.children.map(
+              (child) => _ParentChildTile(
+                child: child,
+                onTap: () => _openParentChild(context, bundle!.parentId, child),
+              ),
+            ),
+          if (bundle?.children.any(
+                (child) => child.artworkActivities.isNotEmpty,
+              ) ==
+              true) ...[
+            const SizedBox(height: 18),
+            const _SectionHeader(title: 'Recent artwork'),
+            _ParentArtworkGallery(
+              parentId: bundle!.parentId,
+              entries: [
+                for (final child in bundle!.children)
+                  for (final activity in child.artworkActivities.take(2))
+                    (child.student.name, activity),
+              ]..sort((a, b) => _compareParentSubmittedNewest(a.$2, b.$2)),
+              limit: 4,
+            ),
+          ],
+          const SizedBox(height: 18),
           _NotificationSection(
             userId: bundle?.parentId,
             notifications: bundle?.notifications ?? const <DbNotification>[],
             limit: 4,
             onChanged: onRefresh,
+            onOpen: (context, notification) => _openParentNotification(
+              context,
+              bundle!.parentId,
+              notification,
+            ),
           ),
-          const SizedBox(height: 18),
-          _SectionHeader(
-            title: 'Linked Children',
-            actionLabel: 'View',
-            onAction: onOpenChildren,
-          ),
-          if ((bundle?.children ?? []).isEmpty)
-            const _EmptyCard(
-              icon: Icons.link_off_rounded,
-              title: 'No linked students',
-              body:
-                  'This parent account is not linked to a student in the database yet.',
-            )
-          else
-            ...bundle!.children.map((child) => _ParentChildTile(child: child)),
         ],
       ),
     );
@@ -7199,16 +7277,23 @@ class _ParentChildrenTab extends StatelessWidget {
         children: [
           const _PageTitle('Children'),
           const SizedBox(height: 12),
-          if ((bundle?.children ?? []).isEmpty)
+          const Text(
+            'Open a child to see assignments, submitted artwork and teacher feedback.',
+            style: TextStyle(color: _muted),
+          ),
+          const SizedBox(height: 12),
+          if (!loading && error == null && (bundle?.children ?? []).isEmpty)
             const _EmptyCard(
               icon: Icons.family_restroom_outlined,
               title: 'No students linked',
-              body:
-                  'Add a parent-student link in Supabase to show progress here.',
+              body: 'Ask your school to link your account to your child.',
             )
-          else
+          else if (bundle != null)
             ...bundle!.children.map(
-              (child) => _ParentChildDetailCard(child: child),
+              (child) => _ParentChildTile(
+                child: child,
+                onTap: () => _openParentChild(context, bundle!.parentId, child),
+              ),
             ),
         ],
       ),
@@ -7247,7 +7332,8 @@ class _ParentSettingsTab extends StatelessWidget {
         FilledButton.tonalIcon(
           onPressed: () => Navigator.of(context).push(
             MaterialPageRoute(
-              builder: (_) => NotificationsPage(userId: userId),
+              builder: (_) =>
+                  NotificationsPage(userId: userId, parentMode: true),
             ),
           ),
           icon: const Icon(Icons.notifications_outlined),
@@ -9322,12 +9408,14 @@ class _NotificationSection extends StatelessWidget {
     required this.notifications,
     required this.limit,
     required this.onChanged,
+    this.onOpen,
   });
 
   final String? userId;
   final List<DbNotification> notifications;
   final int limit;
   final VoidCallback onChanged;
+  final Future<void> Function(BuildContext, DbNotification)? onOpen;
 
   Future<void> _markAllRead() async {
     final id = userId;
@@ -9365,6 +9453,7 @@ class _NotificationSection extends StatelessWidget {
               userId: userId,
               notification: item,
               onChanged: onChanged,
+              onOpen: onOpen,
             ),
           ),
       ],
@@ -9377,11 +9466,13 @@ class _NotificationTile extends StatelessWidget {
     required this.userId,
     required this.notification,
     required this.onChanged,
+    this.onOpen,
   });
 
   final String? userId;
   final DbNotification notification;
   final VoidCallback onChanged;
+  final Future<void> Function(BuildContext, DbNotification)? onOpen;
 
   Future<void> _markRead() async {
     final id = userId;
@@ -9392,6 +9483,10 @@ class _NotificationTile extends StatelessWidget {
 
   Future<void> _openAction(BuildContext context) async {
     await _markRead();
+    if (onOpen != null) {
+      if (context.mounted) await onOpen!(context, notification);
+      return;
+    }
     final action = notification.actionUri;
     if (action == null || !context.mounted) return;
     await _openHostedPage(
@@ -10246,15 +10341,17 @@ class _StudentEnrollmentTile extends StatelessWidget {
 }
 
 class _ParentChildTile extends StatelessWidget {
-  const _ParentChildTile({required this.child});
+  const _ParentChildTile({required this.child, required this.onTap});
 
   final ParentChild child;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return _CardShell(
       padding: EdgeInsets.zero,
       child: ListTile(
+        onTap: onTap,
         contentPadding: const EdgeInsets.all(14),
         leading: _PrivateR2Image(
           kind: R2MediaKind.avatars,
@@ -10270,80 +10367,1077 @@ class _ParentChildTile extends StatelessWidget {
           child.student.name,
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
-        subtitle: Text(
-          '${child.completionLabel} complete - ${child.pendingCount} pending - ${child.reviewedCount} reviewed',
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('${child.submittedCount} of ${child.totalCount} submitted'),
+              const SizedBox(height: 6),
+              LinearProgressIndicator(
+                value: child.completionFraction,
+                backgroundColor: ElikhaBrand.primaryTint,
+                color: _primary,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '${child.pendingCount} to do · ${child.reviewedCount} reviewed',
+              ),
+            ],
+          ),
+        ),
+        trailing: const Icon(Icons.chevron_right_rounded, color: _primary),
+      ),
+    );
+  }
+}
+
+void _openParentChild(
+  BuildContext context,
+  String parentId,
+  ParentChild child,
+) {
+  final access = ParentReadAccess.fromSupabase(parentId);
+  Navigator.of(context)
+      .push(
+        MaterialPageRoute<void>(
+          builder: (_) => ParentChildProgressPage(
+            child: child,
+            access: access,
+            onRefresh: () async {
+              if (!await access.verify(child.student.id)) {
+                throw const ArtworkExportException(
+                  'This child is no longer available to this account.',
+                );
+              }
+              final latest = await MobileDataService.loadParentBundle(parentId);
+              for (final linked in latest.children) {
+                if (linked.student.id == child.student.id) return linked;
+              }
+              access.revoke();
+              throw const ArtworkExportException(
+                'This child is no longer linked to your account. Return to Children and refresh.',
+              );
+            },
+          ),
+        ),
+      )
+      .whenComplete(access.dispose);
+}
+
+ParentChild? parentNotificationChild(
+  ParentBundle bundle,
+  DbNotification notification,
+) {
+  final studentId = _string(notification.metadata['student_id']);
+  final action = notification.actionUri;
+  final activityId = _string(
+    notification.metadata['activity_id'],
+    fallback:
+        action?.pathSegments.length == 2 &&
+            action!.pathSegments.first == 'activity'
+        ? action.pathSegments.last
+        : '',
+  );
+  final matches = bundle.children
+      .where(
+        (child) =>
+            (studentId.isEmpty || child.student.id == studentId) &&
+            (activityId.isEmpty ||
+                child.activities.any((activity) => activity.id == activityId)),
+      )
+      .toList();
+  if ((studentId.isEmpty && activityId.isEmpty) || matches.length != 1) {
+    return null;
+  }
+  return matches.single;
+}
+
+Future<void> _openParentNotification(
+  BuildContext context,
+  String parentId,
+  DbNotification notification,
+) async {
+  if (Supabase.instance.client.auth.currentUser?.id != parentId) return;
+  try {
+    final bundle = await MobileDataService.loadParentBundle(parentId);
+    if (!context.mounted ||
+        Supabase.instance.client.auth.currentUser?.id != parentId) {
+      return;
+    }
+    final child = parentNotificationChild(bundle, notification);
+    if (child != null) {
+      _openParentChild(context, parentId, child);
+      return;
+    }
+    final dialogAccess = ParentReadAccess.forAccount(parentId);
+    await showDialog<void>(
+      context: context,
+      builder: (context) => ListenableBuilder(
+        listenable: dialogAccess,
+        builder: (context, _) => AlertDialog(
+          title: Text(
+            dialogAccess.isCurrent ? notification.title : 'Parent view',
+          ),
+          content: Text(
+            dialogAccess.isCurrent
+                ? notification.message
+                : 'This update is no longer available to this account.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      ),
+    ).whenComplete(dialogAccess.dispose);
+  } catch (_) {
+    if (context.mounted &&
+        Supabase.instance.client.auth.currentUser?.id == parentId) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Unable to open this update. Check your connection and try again.',
+          ),
+        ),
+      );
+    }
+  }
+}
+
+/// Captures the account which opened a parent view. Token refreshes for that
+/// account are safe; logout, account changes or a removed link revoke the view.
+class ParentReadAccess extends ChangeNotifier {
+  ParentReadAccess({
+    required this.parentId,
+    required String? Function() currentUserId,
+    required Stream<String?> identityChanges,
+    required Future<bool> Function(String) isLinked,
+  }) : _currentUserId = currentUserId,
+       _isLinked = isLinked,
+       _identityChanges = identityChanges {
+    _revoked = _currentUserId() != parentId;
+    _subscription = identityChanges.listen((id) {
+      if (id != parentId || _currentUserId() != parentId) revoke();
+    });
+  }
+
+  factory ParentReadAccess.fromSupabase(String parentId) {
+    final client = Supabase.instance.client;
+    return ParentReadAccess(
+      parentId: parentId,
+      currentUserId: () => client.auth.currentUser?.id,
+      identityChanges: client.auth.onAuthStateChange.map(
+        (state) => state.session?.user.id,
+      ),
+      isLinked: (studentId) async =>
+          (await MobileDataService._fetchParentStudentIds(
+            parentId,
+          )).contains(studentId),
+    );
+  }
+
+  factory ParentReadAccess.forAccount(String parentId) {
+    final client = Supabase.instance.client;
+    return ParentReadAccess(
+      parentId: parentId,
+      currentUserId: () => client.auth.currentUser?.id,
+      identityChanges: client.auth.onAuthStateChange.map(
+        (state) => state.session?.user.id,
+      ),
+      isLinked: (_) async => true,
+    );
+  }
+
+  final String parentId;
+  final String? Function() _currentUserId;
+  final Future<bool> Function(String) _isLinked;
+  final Stream<String?> _identityChanges;
+  late final StreamSubscription<String?> _subscription;
+  bool _revoked = false;
+  bool _disposed = false;
+  bool get isCurrent => !_disposed && !_revoked && _currentUserId() == parentId;
+
+  ParentReadAccess fork() => ParentReadAccess(
+    parentId: parentId,
+    currentUserId: _currentUserId,
+    identityChanges: _identityChanges,
+    isLinked: _isLinked,
+  );
+
+  void revoke() {
+    if (_revoked || _disposed) return;
+    _revoked = true;
+    notifyListeners();
+  }
+
+  Future<bool> verify(String studentId) async {
+    if (!isCurrent) {
+      revoke();
+      return false;
+    }
+    final linked = await _isLinked(studentId);
+    if (!linked || !isCurrent) {
+      revoke();
+      return false;
+    }
+    return true;
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    unawaited(_subscription.cancel());
+    super.dispose();
+  }
+}
+
+class _ParentAccessGuard extends StatefulWidget {
+  const _ParentAccessGuard({
+    required this.access,
+    required this.studentId,
+    required this.child,
+  });
+  final ParentReadAccess access;
+  final String studentId;
+  final Widget child;
+  @override
+  State<_ParentAccessGuard> createState() => _ParentAccessGuardState();
+}
+
+class _ParentAccessGuardState extends State<_ParentAccessGuard> {
+  late Future<bool> _verified;
+  @override
+  void initState() {
+    super.initState();
+    _verified = widget.access.verify(widget.studentId);
+  }
+
+  @override
+  void didUpdateWidget(covariant _ParentAccessGuard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.access != widget.access ||
+        oldWidget.studentId != widget.studentId) {
+      _verified = widget.access.verify(widget.studentId);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: widget.access,
+    builder: (context, _) => FutureBuilder<bool>(
+      future: _verified,
+      builder: (context, snapshot) {
+        if (widget.access.isCurrent &&
+            snapshot.connectionState == ConnectionState.done &&
+            snapshot.data == true) {
+          return widget.child;
+        }
+        return Scaffold(
+          appBar: AppBar(title: const Text('Parent view')),
+          body: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (snapshot.connectionState != ConnectionState.done &&
+                      widget.access.isCurrent) ...[
+                    const CircularProgressIndicator(),
+                    const SizedBox(height: 16),
+                    const Text('Loading your child’s work'),
+                  ] else ...[
+                    Text(
+                      widget.access.isCurrent
+                          ? 'Unable to verify this child’s access. Check your connection and try again.'
+                          : 'This parent view is no longer available. Return to your account.',
+                    ),
+                    const SizedBox(height: 16),
+                    if (widget.access.isCurrent)
+                      OutlinedButton(
+                        onPressed: () => setState(
+                          () => _verified = widget.access.verify(
+                            widget.studentId,
+                          ),
+                        ),
+                        child: const Text('Try again'),
+                      )
+                    else
+                      FilledButton(
+                        onPressed: () => Navigator.of(
+                          context,
+                        ).popUntil((route) => route.isFirst),
+                        child: const Text('Return to account'),
+                      ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    ),
+  );
+}
+
+/// A parent-only, read-only view. This does not launch the student's editable
+/// activity page, submit artwork, or request access to private 3D model files.
+class ParentChildProgressPage extends StatefulWidget {
+  const ParentChildProgressPage({
+    super.key,
+    required this.child,
+    required this.access,
+    this.onRefresh,
+  });
+
+  final ParentChild child;
+  final ParentReadAccess access;
+  final Future<ParentChild> Function()? onRefresh;
+
+  @override
+  State<ParentChildProgressPage> createState() =>
+      _ParentChildProgressPageState();
+}
+
+class _ParentChildProgressPageState extends State<ParentChildProgressPage> {
+  late ParentChild _child;
+  bool _refreshing = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _child = widget.child;
+  }
+
+  @override
+  void didUpdateWidget(covariant ParentChildProgressPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.access != widget.access ||
+        oldWidget.child.student.id != widget.child.student.id) {
+      _child = widget.child;
+      _error = null;
+      _refreshing = false;
+    }
+  }
+
+  Future<void> _refresh() async {
+    if (_refreshing || widget.onRefresh == null) return;
+    setState(() {
+      _refreshing = true;
+      _error = null;
+    });
+    try {
+      if (!await widget.access.verify(_child.student.id)) return;
+      final access = widget.access;
+      final studentId = _child.student.id;
+      final child = await widget.onRefresh!();
+      if (mounted &&
+          widget.access == access &&
+          access.isCurrent &&
+          child.student.id == studentId) {
+        setState(() => _child = child);
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(
+          () => _error = error is ArtworkExportException
+              ? error.message
+              : 'Unable to refresh progress. Check your connection and try again.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _refreshing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _ParentAccessGuard(
+      access: widget.access,
+      studentId: _child.student.id,
+      child: Scaffold(
+        appBar: AppBar(title: Text(_child.student.name)),
+        body: RefreshIndicator(
+          onRefresh: _refresh,
+          child: ListView(
+            padding: const EdgeInsets.all(18),
+            physics: const AlwaysScrollableScrollPhysics(),
+            children: [
+              if (_refreshing) const LinearProgressIndicator(),
+              if (_error != null) ...[
+                Text(_error!, style: const TextStyle(color: Color(0xFFB42318))),
+                const SizedBox(height: 12),
+              ],
+              Text(
+                '${_child.student.name}’s progress',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 26,
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'View-only access to your child’s work.',
+                style: TextStyle(color: _muted),
+              ),
+              const SizedBox(height: 18),
+              _CardShell(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${_child.submittedCount} of ${_child.totalCount} assignments submitted',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 10),
+                    LinearProgressIndicator(
+                      value: _child.completionFraction,
+                      backgroundColor: ElikhaBrand.primaryTint,
+                      color: _primary,
+                      minHeight: 7,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 16,
+                      runSpacing: 8,
+                      children: [
+                        Text('${_child.pendingCount} to do'),
+                        Text('${_child.reviewedCount} reviewed'),
+                        Text('${_child.overdueCount} past due'),
+                      ],
+                    ),
+                    if (_child.averageScoreLabel != 'N/A') ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        'Average rating: ${_child.averageScoreLabel}/5',
+                        style: const TextStyle(color: _muted),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 22),
+              const _SectionHeader(title: 'Artwork'),
+              if (_child.artworkActivities.isEmpty)
+                const _EmptyCard(
+                  icon: Icons.image_outlined,
+                  title: 'No artwork pictures yet',
+                  body:
+                      'Saved pictures from submitted work will appear here. Assignment covers are not artwork.',
+                )
+              else
+                _ParentArtworkGallery(
+                  parentId: widget.access.parentId,
+                  access: widget.access,
+                  entries: [
+                    for (final activity in _child.artworkActivities)
+                      (_child.student.name, activity),
+                  ],
+                ),
+              const SizedBox(height: 22),
+              const _SectionHeader(title: 'To do'),
+              if (_child.pendingActivities.isEmpty)
+                const _EmptyCard(
+                  icon: Icons.task_alt_rounded,
+                  title: 'No pending assignments',
+                  body:
+                      'New assignments will appear here when the teacher adds them.',
+                )
+              else
+                ..._child.pendingActivities.map(
+                  (activity) => Padding(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 12,
+                      horizontal: 4,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          activity.title,
+                          style: const TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          parentActivityContext(activity),
+                          style: const TextStyle(color: _muted),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          activity.dueDate == null
+                              ? 'No due date'
+                              : 'Due ${_parentDate(activity.dueDate!)} PHT',
+                          style: TextStyle(
+                            color: activity.isOverdue
+                                ? const Color(0xFFB42318)
+                                : _ink,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        const Divider(height: 1),
+                      ],
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 22),
+              const _SectionHeader(title: 'Teacher feedback'),
+              if (_child.reviewedActivities.isEmpty)
+                const _EmptyCard(
+                  icon: Icons.chat_bubble_outline_rounded,
+                  title: 'No reviews yet',
+                  body:
+                      'Teacher ratings and feedback will appear after review.',
+                )
+              else
+                ..._child.reviewedActivities.map(
+                  (activity) => _CardShell(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          activity.title,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 17,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          parentActivityContext(activity),
+                          style: const TextStyle(color: _muted),
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          mobileStarRatingLabel(activity.submission?.score),
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          activity.submission!.feedback.trim().isEmpty
+                              ? 'No written feedback provided.'
+                              : activity.submission!.feedback.trim(),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 18),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _ParentChildDetailCard extends StatelessWidget {
-  const _ParentChildDetailCard({required this.child});
+String parentActivityContext(DbActivity activity) => [
+  activity.subject.trim(),
+  activity.className.trim(),
+].where((value) => value.isNotEmpty).join(' · ');
 
-  final ParentChild child;
+String _parentDate(DateTime value) => DateFormat(
+  'MMM d, yyyy h:mm a',
+).format(value.toUtc().add(const Duration(hours: 8)));
+
+int _compareParentSubmittedNewest(DbActivity a, DbActivity b) {
+  final aDate = a.submission?.submittedAt;
+  final bDate = b.submission?.submittedAt;
+  if (aDate == null && bDate == null) return a.title.compareTo(b.title);
+  if (aDate == null) return 1;
+  if (bDate == null) return -1;
+  return bDate.compareTo(aDate);
+}
+
+class _ParentArtworkGallery extends StatefulWidget {
+  const _ParentArtworkGallery({
+    required this.entries,
+    required this.parentId,
+    this.access,
+    this.limit,
+  });
+  final List<(String, DbActivity)> entries;
+  final String parentId;
+  final ParentReadAccess? access;
+  final int? limit;
+
+  @override
+  State<_ParentArtworkGallery> createState() => _ParentArtworkGalleryState();
+}
+
+class _ParentArtworkGalleryState extends State<_ParentArtworkGallery> {
+  int _page = 0;
+  static const _pageSize = 6;
+  final Map<String, ParentReadAccess> _accesses = {};
+
+  @override
+  void dispose() {
+    for (final access in _accesses.values) {
+      access.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ParentArtworkGallery oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.parentId != widget.parentId) {
+      for (final access in _accesses.values) {
+        access.dispose();
+      }
+      _accesses.clear();
+      _page = 0;
+    }
+    if (oldWidget.entries.length != widget.entries.length) _page = 0;
+  }
 
   @override
   Widget build(BuildContext context) {
-    final nextDue = child.nextDueActivity;
-    return _CardShell(
+    final count = widget.limit ?? _pageSize;
+    final start = widget.limit == null ? _page * _pageSize : 0;
+    final visible = widget.entries.skip(start).take(count).toList();
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = constraints.maxWidth >= 800
+            ? 3
+            : constraints.maxWidth >= 500
+            ? 2
+            : 1;
+        final width = (constraints.maxWidth - (columns - 1) * 12) / columns;
+        return Column(
+          children: [
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                for (final entry in visible)
+                  SizedBox(
+                    width: width,
+                    child: _ParentArtworkCard(
+                      access:
+                          widget.access ??
+                          _accesses.putIfAbsent(
+                            entry.$2.submission!.studentId,
+                            () =>
+                                ParentReadAccess.fromSupabase(widget.parentId),
+                          ),
+                      key: ValueKey(entry.$2.submission!.id),
+                      studentName: entry.$1,
+                      activity: entry.$2,
+                    ),
+                  ),
+              ],
+            ),
+            if (widget.limit == null && widget.entries.length > _pageSize)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    IconButton(
+                      onPressed: _page == 0
+                          ? null
+                          : () => setState(() => _page--),
+                      tooltip: 'Previous artwork',
+                      icon: const Icon(Icons.chevron_left_rounded),
+                    ),
+                    Text(
+                      '${start + 1}–${start + visible.length} of ${widget.entries.length}',
+                    ),
+                    IconButton(
+                      onPressed: start + count >= widget.entries.length
+                          ? null
+                          : () => setState(() => _page++),
+                      tooltip: 'Next artwork',
+                      icon: const Icon(Icons.chevron_right_rounded),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _ParentArtworkCard extends StatelessWidget {
+  const _ParentArtworkCard({
+    super.key,
+    required this.studentName,
+    required this.activity,
+    required this.access,
+  });
+  final String studentName;
+  final DbActivity activity;
+  final ParentReadAccess access;
+
+  @override
+  Widget build(BuildContext context) {
+    final submission = activity.submission!;
+    void preview() {
+      final previewAccess = access.fork();
+      Navigator.of(context)
+          .push(
+            MaterialPageRoute<void>(
+              builder: (_) => ParentArtworkPreviewPage(
+                studentName: studentName,
+                activity: activity,
+                access: previewAccess,
+              ),
+            ),
+          )
+          .whenComplete(previewAccess.dispose);
+    }
+
+    return Material(
+      color: _surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: const BorderSide(color: _border),
+      ),
+      clipBehavior: Clip.antiAlias,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            child.student.name,
-            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 20),
+          InkWell(
+            onTap: preview,
+            child: AspectRatio(
+              aspectRatio: 1.4,
+              child: _ParentArtworkImage(
+                source: submission.artworkUrl,
+                thumbnail: true,
+              ),
+            ),
           ),
-          const SizedBox(height: 8),
-          _InfoRow('Email', child.student.email),
-          _InfoRow('Progress', child.completionLabel),
-          _InfoRow('Total Activities', child.totalCount.toString()),
-          _InfoRow('Pending', child.pendingCount.toString()),
-          _InfoRow('Submitted', child.submittedCount.toString()),
-          _InfoRow('Reviewed', child.reviewedCount.toString()),
-          _InfoRow('Overdue', child.overdueCount.toString()),
-          _InfoRow('Average Score', child.averageScoreLabel),
-          if (nextDue != null)
-            _InfoRow(
-              'Next Due',
-              '${nextDue.title} - ${_formatDate(nextDue.dueDate)}',
-            ),
-          if (child.reviewedActivities.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            const Text(
-              'Recent feedback',
-              style: TextStyle(fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 6),
-            ...child.reviewedActivities
-                .take(2)
-                .map(
-                  (activity) => Text(
-                    '- ${activity.title}: ${activity.submission?.scoreLabel ?? 'N/A'}',
-                    style: const TextStyle(color: _muted),
+          Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  activity.title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 17,
                   ),
                 ),
-          ],
-          if (child.activities.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            const Text(
-              'Recent activity',
-              style: TextStyle(fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 6),
-            ...child.activities
-                .take(3)
-                .map(
-                  (activity) => Text(
-                    '- ${activity.title}: ${activity.studentStatusLabel}',
-                    style: const TextStyle(color: _muted),
-                  ),
+                const SizedBox(height: 4),
+                Text(studentName, style: const TextStyle(color: _muted)),
+                const SizedBox(height: 4),
+                Text(
+                  activity.isReviewed
+                      ? 'Reviewed · ${mobileStarRatingLabel(submission.score)}'
+                      : 'Submitted · Awaiting review',
+                  style: const TextStyle(color: _muted),
                 ),
-          ],
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: preview,
+                      icon: const Icon(Icons.image_outlined, size: 18),
+                      label: const Text('View artwork'),
+                    ),
+                    _ParentExportButton(
+                      access: access,
+                      studentName: studentName,
+                      activity: activity,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
+}
+
+class _ParentArtworkImage extends StatefulWidget {
+  const _ParentArtworkImage({required this.source, this.thumbnail = false});
+  final String source;
+  final bool thumbnail;
+
+  @override
+  State<_ParentArtworkImage> createState() => _ParentArtworkImageState();
+}
+
+class _ParentArtworkImageState extends State<_ParentArtworkImage> {
+  late Future<Uint8List> _picture;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  void _load() {
+    _picture = loadArtworkPng(
+      widget.source,
+      targetWidth: widget.thumbnail ? 512 : null,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _ParentArtworkImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.source != widget.source ||
+        oldWidget.thumbnail != widget.thumbnail) {
+      _load();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<Uint8List>(
+    future: _picture,
+    builder: (context, snapshot) {
+      if (snapshot.hasData) {
+        return Image.memory(
+          snapshot.data!,
+          fit: BoxFit.contain,
+          errorBuilder: (_, _, _) =>
+              const Center(child: Text('Artwork picture unavailable')),
+        );
+      }
+      if (snapshot.hasError) {
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.broken_image_outlined, color: _muted),
+                const SizedBox(height: 6),
+                const Text(
+                  'Artwork picture unavailable',
+                  textAlign: TextAlign.center,
+                ),
+                TextButton(
+                  onPressed: () => setState(_load),
+                  child: const Text('Try again'),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+      return const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            SizedBox(height: 10),
+            Text('Loading artwork'),
+          ],
+        ),
+      );
+    },
+  );
+}
+
+class ParentArtworkPreviewPage extends StatelessWidget {
+  const ParentArtworkPreviewPage({
+    super.key,
+    required this.studentName,
+    required this.activity,
+    required this.access,
+  });
+  final String studentName;
+  final DbActivity activity;
+  final ParentReadAccess access;
+
+  @override
+  Widget build(BuildContext context) {
+    final submission = activity.submission;
+    final source = submission?.artworkUrl ?? '';
+    final picture = isSupportedArtworkImage(source)
+        ? InteractiveViewer(
+            minScale: .5,
+            maxScale: 5,
+            child: Center(child: _ParentArtworkImage(source: source)),
+          )
+        : const Center(
+            child: Text(
+              'This submission has no saved artwork picture.',
+              textAlign: TextAlign.center,
+            ),
+          );
+    final information = Padding(
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            activity.title,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            studentName,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: _muted),
+          ),
+          if (submission?.submittedAt != null)
+            Text(
+              'Submitted ${_parentDate(submission!.submittedAt!)} PHT',
+              style: const TextStyle(color: _muted),
+            ),
+        ],
+      ),
+    );
+    final export = Padding(
+      padding: const EdgeInsets.all(18),
+      child: _ParentExportButton(
+        access: access,
+        studentName: studentName,
+        activity: activity,
+      ),
+    );
+    return _ParentAccessGuard(
+      access: access,
+      studentId: submission?.studentId ?? '',
+      child: Scaffold(
+        appBar: AppBar(title: const Text('Artwork')),
+        body: SafeArea(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              if (constraints.maxHeight < 420 && constraints.maxWidth >= 500) {
+                return Row(
+                  children: [
+                    Expanded(child: picture),
+                    SizedBox(
+                      width: 300,
+                      child: SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [information, export],
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              }
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  information,
+                  Expanded(child: picture),
+                  export,
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ParentExportButton extends StatefulWidget {
+  const _ParentExportButton({
+    required this.studentName,
+    required this.activity,
+    required this.access,
+  });
+  final String studentName;
+  final DbActivity activity;
+  final ParentReadAccess access;
+
+  @override
+  State<_ParentExportButton> createState() => _ParentExportButtonState();
+}
+
+class _ParentExportButtonState extends State<_ParentExportButton> {
+  bool _busy = false;
+
+  Future<void> _export() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      if (!await widget.access.verify(
+        widget.activity.submission?.studentId ?? '',
+      )) {
+        return;
+      }
+      final bytes = await loadArtworkPng(
+        widget.activity.submission?.artworkUrl ?? '',
+      );
+      if (!mounted) return;
+      if (!await widget.access.verify(
+            widget.activity.submission?.studentId ?? '',
+          ) ||
+          !mounted) {
+        return;
+      }
+      final path = await FilePicker.platform.saveFile(
+        dialogTitle: 'Save artwork PNG',
+        fileName: artworkPngFileName(widget.studentName, widget.activity.title),
+        type: FileType.custom,
+        allowedExtensions: const ['png'],
+        bytes: bytes,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              path == null ? 'Export cancelled.' : 'Artwork PNG saved.',
+            ),
+          ),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              error is ArtworkExportException
+                  ? error.message
+                  : 'Unable to save the artwork. Try again.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => OutlinedButton.icon(
+    onPressed:
+        _busy ||
+            !isSupportedArtworkImage(
+              widget.activity.submission?.artworkUrl ?? '',
+            )
+        ? null
+        : _export,
+    icon: _busy
+        ? const SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          )
+        : const Icon(Icons.download_rounded, size: 18),
+    label: Text(_busy ? 'Exporting PNG' : 'Export PNG'),
+  );
 }
 
 class _InfoCard extends StatelessWidget {
@@ -11671,10 +12765,44 @@ class MobileDataService {
     }
 
     final users = await _fetchUsersByIds(studentIds);
+    final returnedIds = users.map((student) => student.id).toSet();
+    if (studentIds.any((id) => !returnedIds.contains(id))) {
+      throw const ArtworkExportException(
+        'A linked child profile is unavailable. Refresh or ask your school to check the parent link.',
+      );
+    }
     final children = <ParentChild>[];
     for (final student in users) {
-      final activities = await fetchStudentActivities(student.id);
-      children.add(ParentChild(student: student, activities: activities));
+      final activities = await fetchStudentActivities(
+        student.id,
+        preserveSubmittedHistory: true,
+      );
+      final classIds = activities
+          .map((activity) => activity.classId)
+          .where((id) => id.isNotEmpty)
+          .toSet()
+          .toList();
+      final classRows = classIds.isEmpty
+          ? <Map<String, dynamic>>[]
+          : _rows(
+              await _client
+                  .from('classes')
+                  .select('id, name, grade, section, subject')
+                  .inFilter('id', classIds),
+            );
+      final classNames = {
+        for (final row in classRows)
+          _string(row['id']): DbClass.fromRow(row).displayName,
+      };
+      children.add(
+        ParentChild(
+          student: student,
+          activities: [
+            for (final activity in activities)
+              activity.copyWith(className: classNames[activity.classId] ?? ''),
+          ],
+        ),
+      );
     }
     return ParentBundle(
       parentId: parentId,
@@ -11755,8 +12883,9 @@ class MobileDataService {
   }
 
   static Future<List<DbActivity>> fetchStudentActivities(
-    String studentId,
-  ) async {
+    String studentId, {
+    bool preserveSubmittedHistory = false,
+  }) async {
     final assignmentRows = _rows(
       await _client
           .from('activity_assignments')
@@ -11769,7 +12898,9 @@ class MobileDataService {
       await _client
           .from('submissions')
           .select(
-            'id, activity_id, student_id, artwork_url, description, status, submitted_at, reviewed_at, score, feedback',
+            preserveSubmittedHistory
+                ? 'id, activity_id, student_id, artwork_url, status, submitted_at, reviewed_at, score, feedback'
+                : 'id, activity_id, student_id, artwork_url, description, status, submitted_at, reviewed_at, score, feedback',
           )
           .eq('student_id', studentId)
           .order('submitted_at', ascending: false),
@@ -11813,6 +12944,7 @@ class MobileDataService {
         }
       }
     } catch (_) {
+      if (preserveSubmittedHistory) rethrow;
       // Assignment and submission rows still provide a useful activity list if
       // the defensive class-activity fallback is temporarily unavailable.
     }
@@ -11855,7 +12987,17 @@ class MobileDataService {
           ).map((row) => _string(row['id'])).toSet();
     final visibleActivityRows = activityRows.where((row) {
       final classId = _string(row['class_id']);
-      return classId.isEmpty || activeClassIds.contains(classId);
+      final hasCompletedSubmission = submissionRows.any(
+        (submission) =>
+            _string(submission['activity_id']) == _string(row['id']) &&
+            DbSubmission.fromRow(submission).isSubmitted,
+      );
+      return mobileActivityVisibleForStudent(
+        classId: classId,
+        activeClassIds: activeClassIds,
+        hasCompletedSubmission: hasCompletedSubmission,
+        preserveSubmittedHistory: preserveSubmittedHistory,
+      );
     }).toList();
 
     final assignmentsByActivity = {
@@ -11879,7 +13021,14 @@ class MobileDataService {
           ? null
           : DbSubmission.fromRow(submissionRow);
       return DbActivity.fromRow(
-        row,
+        preserveSubmittedHistory
+            ? {
+                ...row,
+                'due_date': parseMobileParentDeadline(
+                  row['due_date'],
+                )?.toIso8601String(),
+              }
+            : row,
         assignment: assignment,
         submission: submission,
       );
@@ -12915,9 +14064,18 @@ class MobileDataService {
             .where((id) => id.isNotEmpty)
             .toSet()
             .toList();
-        if (ids.isNotEmpty) return ids;
-      } catch (_) {
-        // Try the next supported parent link shape.
+        return ids;
+      } on PostgrestException catch (error) {
+        // Legacy layouts are supported only when a table/column truly does not
+        // exist. Permission, session and network errors must remain visible.
+        if (!const {
+          '42P01',
+          '42703',
+          'PGRST204',
+          'PGRST205',
+        }.contains(error.code)) {
+          rethrow;
+        }
       }
     }
 
@@ -12930,8 +14088,18 @@ class MobileDataService {
           .where((id) => id.isNotEmpty)
           .toSet()
           .toList();
-    } catch (_) {
-      return [];
+    } on PostgrestException catch (error) {
+      if (!const {
+        '42P01',
+        '42703',
+        'PGRST204',
+        'PGRST205',
+      }.contains(error.code)) {
+        rethrow;
+      }
+      throw StateError(
+        'Parent-student links are not configured. Contact the school.',
+      );
     }
   }
 
@@ -13191,9 +14359,36 @@ class ParentChild {
   int get overdueCount => activities.where((item) => item.isOverdue).length;
 
   List<DbActivity> get pendingActivities =>
-      activities.where((item) => !item.isSubmitted).toList();
+      activities.where((item) => !item.isSubmitted).toList()..sort((a, b) {
+        if (a.dueDate == null && b.dueDate == null) {
+          return a.title.compareTo(b.title);
+        }
+        if (a.dueDate == null) return 1;
+        if (b.dueDate == null) return -1;
+        return a.dueDate!.compareTo(b.dueDate!);
+      });
   List<DbActivity> get reviewedActivities =>
-      activities.where((item) => item.isReviewed).toList();
+      activities.where((item) => item.isReviewed).toList()..sort((a, b) {
+        final aDate = a.submission?.reviewedAt ?? a.submission?.submittedAt;
+        final bDate = b.submission?.reviewedAt ?? b.submission?.submittedAt;
+        if (aDate == null && bDate == null) return a.title.compareTo(b.title);
+        if (aDate == null) return 1;
+        if (bDate == null) return -1;
+        return bDate.compareTo(aDate);
+      });
+
+  List<DbActivity> get artworkActivities =>
+      activities
+          .where(
+            (item) =>
+                item.isSubmitted &&
+                isSupportedArtworkImage(item.submission?.artworkUrl ?? ''),
+          )
+          .toList()
+        ..sort(_compareParentSubmittedNewest);
+
+  double get completionFraction =>
+      totalCount == 0 ? 0 : submittedCount / totalCount;
 
   DbActivity? get nextDueActivity {
     final pending =
@@ -13891,8 +15086,8 @@ class DbSubmission {
       artworkUrl: _string(row['artwork_url']),
       rawDescription: _string(row['description']),
       status: _normalizeStatus(row['status']),
-      submittedAt: _date(row['submitted_at']),
-      reviewedAt: _date(row['reviewed_at']),
+      submittedAt: parseMobileUtcTimestamp(row['submitted_at']),
+      reviewedAt: parseMobileUtcTimestamp(row['reviewed_at']),
       score: _num(row['score']),
       feedback: _string(row['feedback']),
     );
@@ -14157,6 +15352,41 @@ DateTime? _date(Object? value) {
   final text = _string(value);
   if (text.isEmpty) return null;
   return DateTime.tryParse(text)?.toLocal();
+}
+
+bool mobileActivityVisibleForStudent({
+  required String classId,
+  required Set<String> activeClassIds,
+  required bool hasCompletedSubmission,
+  bool preserveSubmittedHistory = false,
+}) =>
+    classId.isEmpty ||
+    activeClassIds.contains(classId) ||
+    (preserveSubmittedHistory && hasCompletedSubmission);
+
+/// Supabase submission timestamps without an offset are UTC, not the device's
+/// wall-clock time. Keep local DateTime values for existing native formatting.
+DateTime? parseMobileUtcTimestamp(Object? value) {
+  final text = _string(value).trim();
+  if (text.isEmpty) return null;
+  final hasOffset = RegExp(
+    r'(Z|[+-]\d{2}:?\d{2})$',
+    caseSensitive: false,
+  ).hasMatch(text);
+  final normalized = hasOffset
+      ? text
+      : RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(text)
+      ? '${text}T00:00:00Z'
+      : '${text}Z';
+  return DateTime.tryParse(normalized)?.toLocal();
+}
+
+DateTime? parseMobileParentDeadline(Object? value) {
+  final text = _string(value).trim();
+  if (RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(text)) {
+    return DateTime.tryParse('${text}T23:59:59.999+08:00')?.toLocal();
+  }
+  return parseMobileUtcTimestamp(value);
 }
 
 String _formatDate(DateTime? date) =>
